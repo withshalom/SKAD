@@ -143,7 +143,7 @@ body[data-theme="parchment"] {
   --accent-glow: rgba(107,68,35,0.18);
   --t1: #2e2412;               /* primary text — near-black warm brown */
   --t2: #4a3a20;               /* secondary text */
-  --t3: #7a6640;               /* muted text */
+  --t3: #63512f;               /* muted text — was #7a6640 at 3.79:1 on panel (failed WCAG AA), now 5.24:1 */
 }
 
 body[data-theme="classic-dark"] #main-canvas,
@@ -166,7 +166,7 @@ body[data-theme="parchment"] #main-canvas { background: var(--void); }
   --red:           #ff4455;
   --t1:  #f0f4f8;
   --t2: #a8c4dc;
-  --t3: #6888a8;
+  --t3: #7391b0;  /* was #6888a8 — 4.43:1 on panel failed WCAG AA; this clears 5.0:1 */
   --fm:     'JetBrains Mono', monospace;
   --fd:       'Syne', sans-serif;
   --fu:       'Atkinson Hyperlegible', sans-serif;
@@ -434,7 +434,7 @@ body.drafting-mode #app { pointer-events:auto; z-index:20; }
 .tool-btn.active::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--accent); box-shadow:0 0 8px var(--accent); }
 .tool-icon { width:22px; height:22px; display:flex; align-items:center; justify-content:center; }
 .tool-label { font-size:11px; font-family:var(--fu); color:var(--t2); letter-spacing:0.05em; opacity:0.9; }
-.tool-btn.active .tool-label { color:var(--accent); }
+.tool-btn.active .tool-label { color:var(--t1); }
 
 /* ── LAYOUT SYSTEM ──────────────────────────────────────────────────────
    Layout is a separate axis from colour theme, and it exists so the two
@@ -1310,7 +1310,7 @@ button, .tb-menu-item, .tb-dd-item, .layer-row, .tab-item, .sb-item.sb-toggle {
   letter-spacing: 0.08em; text-align: center; cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.layer-add-btn:hover { background: var(--hover); color: var(--accent); border-color: var(--accent-dim); }
+.layer-add-btn:hover { background: var(--hover); color: var(--t1); border-color: var(--accent-dim); }
 /* Phone: shrink the button chrome and let the panel use the screen width,
    but keep it anchored to the same control so it never floats loose. */
 .mobile-mode #layer-dd-btn { font-size: 10px; padding: 0 6px; gap: 4px; }
@@ -1643,7 +1643,7 @@ body.kanvas-mode { --accent: #0090a8; --accent-dim: #006888; --accent-glow: rgba
 
 .tool-icon svg { width:16px; height:16px; stroke:#7ee8ff; color:#7ee8ff; }
 .tool-btn:hover .tool-icon svg { stroke:#a8f0ff; color:#a8f0ff; }
-.tool-btn.active .tool-icon svg { stroke:var(--accent); color:var(--accent); filter:drop-shadow(0 0 3px var(--accent)); }
+.tool-btn.active .tool-icon svg { stroke:var(--t1); color:var(--t1); filter:drop-shadow(0 0 3px var(--accent)); }
 
 /* Icons per theme. .active already reads var(--accent), themed above, so
    only the hardcoded default/hover states need per-theme rules. */
@@ -19401,6 +19401,102 @@ window.addEventListener('load', function aiInit() {
 
   aiAppendBubble('system', 'AI is ready — ask for geometry, edits, or explanations of what\'s on the canvas.');
 });
+</script>
+
+<!-- ── ACCESS GATE — cosmetic only, NOT real security ──────────────────────
+     This is a deterrent, not a lock: it stops naive crawlers, script bots
+     that don't run JS, and curious no-code visitors from landing straight
+     in the app. It does NOT stop anyone who opens dev tools — the hash
+     below is public the moment this page loads, so treat it as a filter,
+     not a secret. Real access control (Cloudflare Access) replaces this
+     later; this can be deleted outright once that's live.
+
+     TO CHANGE THE PASSWORD: run this in any browser console —
+       crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourNewPassword'))
+         .then(b => console.log(Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')))
+     — then paste the printed hex into GATE_HASH below.
+     Current password: Kryptologic@l (case-sensitive) ── change this before sharing the link. -->
+<div id="gate-overlay">
+  <div class="gate-box">
+    <div class="gate-brand">KOMMAND</div>
+    <div class="gate-sub">Experimental build — access restricted</div>
+    <input id="gate-pw" type="password" placeholder="Password" autocomplete="off" spellcheck="false">
+    <button id="gate-submit">Enter</button>
+    <div id="gate-error"></div>
+  </div>
+</div>
+<style>
+#gate-overlay {
+  position: fixed; inset: 0; z-index: 99999;
+  background: var(--void);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--fu);
+}
+#gate-overlay.unlocked { display: none; }
+.gate-box {
+  width: min(320px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--border-hi);
+  border-radius: 10px;
+  padding: 32px 28px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.gate-brand { font-family: var(--fm); font-size: 22px; font-weight: 700; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 6px; }
+.gate-sub { font-size: 12px; color: var(--t2); letter-spacing: 0.04em; margin-bottom: 22px; }
+#gate-pw {
+  width: 100%; background: var(--void); border: 1px solid var(--border-hi); border-radius: 6px;
+  color: var(--t1); font-family: var(--fm); font-size: 14px; padding: 10px 12px;
+  margin-bottom: 12px; text-align: center;
+}
+#gate-pw:focus { outline: none; border-color: var(--accent); }
+#gate-submit {
+  width: 100%; background: var(--accent-glow); border: 1px solid var(--accent); border-radius: 6px;
+  color: var(--t1); font-family: var(--fu); font-weight: 700; font-size: 13px; letter-spacing: 0.06em;
+  padding: 10px; cursor: pointer;
+}
+#gate-submit:hover { background: var(--hover); }
+#gate-error { margin-top: 12px; min-height: 14px; font-size: 12px; color: var(--red); }
+</style>
+<script>
+(function() {
+  // Password is "Kryptologic@l" (case-sensitive) — this is its SHA-256, not
+  // the password itself, but it's still only a speed bump, not real security.
+  const GATE_HASH = 'c6178919a64eb39d81fc90d4fdc3301ae51a053086942032c18ce04857b83bb5';
+  const SESSION_KEY = 'kommand.gate.unlocked';
+  const overlay = document.getElementById('gate-overlay');
+  const pwInput = document.getElementById('gate-pw');
+  const errEl = document.getElementById('gate-error');
+
+  if (sessionStorage.getItem(SESSION_KEY) === '1') overlay.classList.add('unlocked');
+
+  // crypto.subtle needs a secure context (https, or localhost). Falls back to
+  // a plain compare so this doesn't just silently break over http/file://
+  // during local testing — still cosmetic either way, so no loss of "security".
+  async function passes(value) {
+    if (window.crypto && crypto.subtle) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+      const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+      return hex === GATE_HASH;
+    }
+    return value === 'Kryptologic@l';
+  }
+
+  async function tryUnlock() {
+    if (await passes(pwInput.value)) {
+      sessionStorage.setItem(SESSION_KEY, '1');
+      overlay.classList.add('unlocked');
+    } else {
+      errEl.textContent = 'Incorrect password.';
+      pwInput.value = '';
+      pwInput.focus();
+    }
+  }
+
+  document.getElementById('gate-submit').addEventListener('click', tryUnlock);
+  pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+  if (!overlay.classList.contains('unlocked')) setTimeout(() => pwInput.focus(), 50);
+})();
 </script>
 </body>
 </html>
