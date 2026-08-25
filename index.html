@@ -34,9 +34,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="robots" content="noindex, follow">
 <meta name="copyright" content="Copyright (C) 2026 KADsuite / withshalom. Licensed under AGPL-3.0-or-later. KADsuite™, KAD™, KAM™, KUBIC™, KARVE™, KONSTRUCT™, KULTIVATE™, KODE™, KANVAS™, KONNECTOR™, KAMPUS™, KLOUD™, KID™, and KODEX™ are trademarks of withshalom / KADsuite. Forks must remain open source under AGPL. Trademarks not licensed by AGPL.">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>KOMMAND — KAD Voice Prototype</title>
+<title>KOMMAND — KAD Voice + AI Prototype</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0c1824">
 <link rel="icon" href="/icons/icon-192.png">
@@ -2421,7 +2422,7 @@ body.kanvas-mode #app {
 
 <!-- TOPBAR -->
 <div id="topbar">
-  <div class="brand"><span>KAD</span><div class="brand-sub" id="brand-sub">Kernel-Aided Design · Voice Prototype</div></div>
+  <div class="brand"><span>KAD</span><div class="brand-sub" id="brand-sub">Kernel-Aided Design · Voice + AI Prototype</div></div>
   <div class="tb-sep"></div>
   <div class="tb-menu">
     <div class="tb-menu-item" id="menu-file" data-menu="file">File
@@ -2502,6 +2503,9 @@ body.kanvas-mode #app {
     </div>
   </div>
   <div class="tb-right">
+    <button id="ai-launcher" onclick="aiOpenDock()" title="AI — conversational KOMMAND (or type: AI &lt;request&gt;)">
+      AI
+    </button>
     <button id="kloud-share-btn" onclick="kloudOpenPanel()" title="Host or join a live drafting space">
       <span class="kloud-dot" id="kloud-dot"></span>SHARE
     </button>
@@ -2788,6 +2792,9 @@ body.kanvas-mode #app {
       <div class="coord-example" style="color:var(--red);">🎤 Or a whole sentence: "draft a line
         starting at zero zero ending at zero ten" runs all three steps.
         Unrecognized speech is quietly ignored, never guessed at.</div>
+      <div class="coord-example" style="color:var(--accent);">✦ AI: type
+        <b>AI</b> or <b>@AI</b> followed by a request — "AI a 40x20 plate with
+        4 corner holes" — to open the conversational panel.</div>
       <div class="coord-example">While LINE active, type to open input.</div>
       <div class="coord-example">Values entered in current unit (<span id="coord-cur-unit" style="color:var(--accent)">mm</span>):</div>
       <div class="coord-example"><b>100,50</b> — absolute X,Y</div>
@@ -18667,5 +18674,733 @@ window.addEventListener('load', ()=>{
 });
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     KOMMAND · AI — conversational layer, using the Claude API  ·  experimental appended layer
+     ───────────────────────────────────────────────────────────────────────
+     Everything below this comment is additive. Not one line of KAD above it
+     was edited: the KOMMAND interception is done by reassigning the global
+     submitKommandText binding from this separate script block, and the
+     dock toggle button is injected into the KOMMAND bar at load. Delete this
+     whole block and the file is byte-for-byte stock KAD again.
+
+     Typing  AI <description>  or  @AI <description>  into KOMMAND, or
+     clicking the AI button, opens a docked chat panel — the same pattern
+     as Copilot in Microsoft Office or Gemini's side panel in Chrome: a
+     persistent conversational sidebar, not a one-shot silent action.
+
+     Claude has two tools available in that conversation:
+       • run_kommand     — sends a literal KOMMAND script through KAD's own
+                           real parser (submitKommandText), exactly as if
+                           typed and committed by a person. Proposed as an
+                           action card the user must click Run to execute —
+                           this is the tool that can reach CLEAR/NEW/DELETE.
+       • place_geometry  — hands back new objects directly in KAD's schema
+                           (KAD-FORMAT.md §9). Applied immediately through
+                           the real GeoMemory mutators, since its reach is
+                           additive-only and schema-validated before anything
+                           touches the drawing.
+
+     Format contract: KAD-FORMAT.md §9. Conversation and API key are both
+     in-memory only per session unless the user explicitly opts in to
+     remembering the key (see settings view) — never the transcript.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<style>
+/* ── Docked sidebar, not a centered modal — the Copilot/Chrome-side-panel
+   pattern the user asked for: persistent, slides in from the edge, chat
+   stays visible while you keep working in the canvas. ── */
+#ai-dock {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(380px, 100vw);
+  background: var(--panel);
+  border-left: 1px solid var(--border-hi);
+  box-shadow: -18px 0 40px rgba(0,0,0,0.45);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+  z-index: 700;
+}
+#ai-dock.open { transform: translateX(0); }
+
+.ai-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ai-head-text { display: flex; flex-direction: column; line-height: 1.15; flex: 1; min-width: 0; }
+.ai-head-title { font-family: var(--fu); font-size: 14px; font-weight: 700; color: var(--t1); letter-spacing: 0.02em; }
+.ai-head-sub { font-family: var(--fu); font-size: 10.5px; color: var(--t3); letter-spacing: 0.05em; }
+.ai-head-btn {
+  background: none; border: none; color: var(--t3); cursor: pointer;
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border-radius: 5px; flex-shrink: 0;
+}
+.ai-head-btn:hover { color: var(--t1); background: var(--panel2); }
+.ai-head-btn svg { width: 16px; height: 16px; }
+
+/* ── Chat log ── */
+#ai-log {
+  flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px;
+}
+.ai-msg { max-width: 90%; font-family: var(--fu); font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+.ai-msg.user { align-self: flex-end; background: var(--accent-glow); border: 1px solid var(--accent-dim); color: var(--t1); border-radius: 10px 10px 2px 10px; padding: 8px 10px; }
+.ai-msg.assistant { align-self: flex-start; background: var(--panel2); border: 1px solid var(--border); color: var(--t1); border-radius: 10px 10px 10px 2px; padding: 8px 10px; }
+.ai-msg.system { align-self: center; color: var(--t3); font-size: 11px; font-style: italic; }
+.ai-msg.error { align-self: center; color: var(--red, #ff6a6a); font-size: 11.5px; border: 1px solid rgba(255,80,80,0.35); border-radius: 6px; padding: 6px 10px; background: rgba(255,80,80,0.08); }
+.ai-thinking { align-self: flex-start; color: var(--t3); font-family: var(--fu); font-size: 12px; font-style: italic; }
+
+/* ── run_kommand action card ── */
+.ai-card {
+  align-self: stretch; border: 1px solid var(--accent-dim); border-radius: 8px;
+  background: var(--void); overflow: hidden;
+}
+.ai-card-label { font-family: var(--fm); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); padding: 6px 10px 0; }
+.ai-card-explain { font-family: var(--fu); font-size: 12px; color: var(--t2); padding: 3px 10px 6px; }
+.ai-card-script { font-family: var(--fm); font-size: 12px; color: var(--t1); background: var(--panel2); margin: 0 10px 8px; padding: 6px 8px; border-radius: 5px; overflow-x: auto; }
+.ai-card-row { display: flex; gap: 8px; padding: 0 10px 10px; }
+.ai-card-row button { flex: 1; font-family: var(--fu); font-size: 12px; font-weight: 600; padding: 7px 0; border-radius: 6px; cursor: pointer; }
+.ai-card-run { background: var(--accent-glow); border: 1px solid var(--accent-dim); color: var(--accent); }
+.ai-card-run:hover { background: rgba(0,212,255,0.25); }
+.ai-card-discard { background: var(--panel2); border: 1px solid var(--border-hi); color: var(--t2); }
+.ai-card-discard:hover { color: var(--t1); }
+.ai-card.resolved .ai-card-row { display: none; }
+.ai-card-result { font-family: var(--fu); font-size: 11px; padding: 0 10px 10px; color: var(--t3); }
+
+/* ── Composer ── */
+#ai-composer { flex-shrink: 0; border-top: 1px solid var(--border); padding: 10px; display: flex; gap: 8px; align-items: flex-end; }
+#ai-input {
+  flex: 1; resize: none; background: var(--void); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--t1); font-family: var(--fu); font-size: 12.5px;
+  padding: 8px 10px; outline: none; max-height: 90px; min-height: 36px;
+}
+#ai-input:focus { border-color: var(--accent-dim); }
+#ai-send {
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 8px;
+  background: var(--accent-glow); border: 1px solid var(--accent-dim); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+#ai-send:hover { background: rgba(0,212,255,0.25); }
+#ai-send:disabled { opacity: 0.4; cursor: default; }
+#ai-send svg { width: 16px; height: 16px; }
+
+/* ── Settings view (swapped in over the log) ── */
+#ai-settings-view { display: none; flex: 1; overflow-y: auto; padding: 14px 16px; flex-direction: column; gap: 10px; }
+#ai-settings-view.open { display: flex; }
+#ai-log.hidden, #ai-composer.hidden { display: none; }
+.ai-sec-title { font-family: var(--fm); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--t3); }
+#ai-settings-view input[type=text], #ai-settings-view input[type=password], #ai-settings-view select {
+  width: 100%; box-sizing: border-box; background: var(--void); border: 1px solid var(--border);
+  border-radius: 6px; padding: 9px 10px; color: var(--t1); font-family: var(--fm); font-size: 12px; outline: none;
+}
+#ai-settings-view input:focus, #ai-settings-view select:focus { border-color: var(--accent-dim); }
+.ai-note { font-family: var(--fu); font-size: 11px; color: var(--t3); line-height: 1.5; }
+.ai-check { display: flex; align-items: center; gap: 8px; font-family: var(--fu); font-size: 12px; color: var(--t2); }
+.ai-check input { width: auto; }
+.ai-sep { height: 1px; background: var(--border); }
+.ai-btn { font-family: var(--fu); font-size: 13px; font-weight: 600; letter-spacing: 0.06em; color: var(--accent); background: var(--accent-glow); border: 1px solid var(--accent-dim); border-radius: 6px; padding: 10px 14px; cursor: pointer; text-align: center; }
+.ai-btn:hover { background: rgba(0,212,255,0.25); }
+.ai-btn.ghost { color: var(--t2); background: var(--panel2); border-color: var(--border-hi); }
+.ai-row { display: flex; gap: 8px; }
+#ai-status { font-family: var(--fu); font-size: 12px; color: var(--t2); min-height: 16px; }
+
+/* ── Busy/ready state on the toolbar button ── */
+#ai-launcher.busy { background: rgba(0,212,255,0.15); border-color: var(--accent); animation: aiPulse 1.1s ease-in-out infinite; }
+@keyframes aiPulse { 0%,100% { box-shadow:0 0 0 0 rgba(0,212,255,0.45); } 50% { box-shadow:0 0 0 7px rgba(0,212,255,0); } }
+.mobile-mode #ai-dock { width: 100vw; }
+
+/* ── AI toolbar button — the conversational entry point into KOMMAND.
+   Lives in .tb-right next to SHARE, styled to match #kloud-share-btn
+   exactly so it reads as a sibling control, not a separately-branded
+   product bolted on. No logo, no product name — "AI" is both the label
+   and the KOMMAND trigger word, so the button and the typed shortcut
+   teach each other. Already as compact as SHARE's own status dot, so
+   no separate mobile-only shrink is needed. ── */
+#ai-launcher {
+  display:flex; align-items:center; gap:6px;
+  font-family:var(--fu); font-size:12px; font-weight:600; letter-spacing:0.1em;
+  color:var(--accent); background:var(--panel2);
+  border:1px solid var(--accent-dim); border-radius:4px;
+  padding:4px 10px; cursor:pointer; transition:background .15s;
+}
+#ai-launcher:hover { background:var(--hover); }
+</style>
+
+<div id="ai-dock" aria-label="AI — conversational KOMMAND">
+  <div class="ai-head">
+    <div class="ai-head-text">
+      <div class="ai-head-title">KOMMAND · AI</div>
+      <div class="ai-head-sub">Powered by Claude</div>
+    </div>
+    <button class="ai-head-btn" onclick="aiToggleSettings()" aria-label="AI settings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1.03H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.55V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1.03H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1.03z"/></svg>
+    </button>
+    <button class="ai-head-btn" onclick="aiCloseDock()" aria-label="Close">✕</button>
+  </div>
+
+  <div id="ai-log"></div>
+
+  <div id="ai-settings-view">
+    <div class="ai-sec-title">API Key</div>
+    <input type="password" id="ai-key-input" placeholder="sk-ant-..." spellcheck="false" autocomplete="off"/>
+    <label class="ai-check">
+      <input type="checkbox" id="ai-remember"/>
+      Remember on this device
+    </label>
+    <div class="ai-note">
+      Unchecked, the key lives in memory for this session only and is gone on reload.
+      Checked, it is stored in this browser's localStorage — convenient on your own
+      machine, readable by anything else running on this origin. The conversation
+      itself is never stored either way.
+    </div>
+
+    <div class="ai-sec-title">Model</div>
+    <select id="ai-model">
+      <option value="claude-sonnet-5">claude-sonnet-5 — balanced (default)</option>
+      <option value="claude-opus-5">claude-opus-5 — strongest reasoning</option>
+      <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 — fastest, least precise</option>
+    </select>
+
+    <div class="ai-sec-title">Endpoint</div>
+    <input type="text" id="ai-endpoint-input" placeholder="https://api.anthropic.com/v1/messages" spellcheck="false" autocomplete="off"/>
+    <div class="ai-note">
+      Leave empty to call the Claude API directly from this page (fine for solo local
+      testing). Set a proxy URL instead for anything hosted publicly, so the key never
+      reaches the browser.
+    </div>
+
+    <div class="ai-sep"></div>
+    <div id="ai-status"></div>
+    <div class="ai-row">
+      <button class="ai-btn ghost" onclick="aiToggleSettings()" style="flex:1">Back to chat</button>
+      <button class="ai-btn" onclick="aiSaveSettings()" style="flex:1">Save</button>
+    </div>
+  </div>
+
+  <div id="ai-composer">
+    <textarea id="ai-input" rows="1" placeholder="Ask AI to draw, edit, or explain something…"></textarea>
+    <button id="ai-send" onclick="aiOnSendClick()" aria-label="Send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+//  KOMMAND · AI — chat panel + tool-use bridge, powered by the Claude API
+// ══════════════════════════════════════════════════════════════════════════════
+
+const AI_DEFAULT_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const AI_STORE_KEY = 'kommand.ai.settings';
+
+const KOMMAND_AI = {
+  key: '', endpoint: '', model: 'claude-sonnet-5', remember: false,
+  busy: false,
+  transcript: [],      // Anthropic Messages-format history — in-memory only, never persisted
+  turnDepth: 0,        // guards against a runaway tool-use loop
+};
+
+// ── Settings persistence — opt-in, key only. Endpoint/model are harmless
+// preferences and are always remembered so unchecking "remember" doesn't
+// also reset which model you picked. The transcript is never touched here —
+// there is no code path that writes it to disk.
+function aiLoadSettings() {
+  try {
+    const raw = localStorage.getItem(AI_STORE_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    KOMMAND_AI.endpoint = d.endpoint || '';
+    KOMMAND_AI.model    = d.model || 'claude-sonnet-5';
+    KOMMAND_AI.remember = !!d.remember;
+    if (d.remember && d.key) KOMMAND_AI.key = d.key;
+  } catch (e) { /* corrupt or unavailable storage is not fatal — start clean */ }
+}
+function aiPersistSettings() {
+  try {
+    localStorage.setItem(AI_STORE_KEY, JSON.stringify({
+      endpoint: KOMMAND_AI.endpoint, model: KOMMAND_AI.model, remember: KOMMAND_AI.remember,
+      key: KOMMAND_AI.remember ? KOMMAND_AI.key : ''
+    }));
+  } catch (e) { /* private-mode / quota — settings simply don't persist */ }
+}
+
+// ── Dock open/close ────────────────────────────────────────────────────────────
+function aiOpenDock() {
+  document.getElementById('ai-dock').classList.add('open');
+  if (!KOMMAND_AI.key) aiToggleSettings(true);
+  setTimeout(() => document.getElementById('ai-input').focus(), 200);
+}
+function aiCloseDock() {
+  document.getElementById('ai-dock').classList.remove('open');
+}
+function aiToggleSettings(forceOpen) {
+  const view = document.getElementById('ai-settings-view');
+  const log  = document.getElementById('ai-log');
+  const composer = document.getElementById('ai-composer');
+  const opening = forceOpen === true ? true : forceOpen === false ? false : !view.classList.contains('open');
+  view.classList.toggle('open', opening);
+  log.classList.toggle('hidden', opening);
+  composer.classList.toggle('hidden', opening);
+  if (opening) {
+    document.getElementById('ai-key-input').value      = KOMMAND_AI.key;
+    document.getElementById('ai-endpoint-input').value = KOMMAND_AI.endpoint;
+    document.getElementById('ai-model').value          = KOMMAND_AI.model;
+    document.getElementById('ai-remember').checked     = KOMMAND_AI.remember;
+    aiStatus(KOMMAND_AI.key ? 'Key set.' : 'No key set yet — AI can\'t reach Claude without one.');
+  }
+}
+function aiStatus(msg, color) {
+  const el = document.getElementById('ai-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = color || 'var(--t2)';
+}
+function aiSaveSettings() {
+  KOMMAND_AI.key      = document.getElementById('ai-key-input').value.trim();
+  KOMMAND_AI.endpoint = document.getElementById('ai-endpoint-input').value.trim();
+  KOMMAND_AI.model    = document.getElementById('ai-model').value;
+  KOMMAND_AI.remember = document.getElementById('ai-remember').checked;
+  aiPersistSettings();
+  aiSyncButton();
+  if (KOMMAND_AI.key) aiToggleSettings(false);
+  aiStatus(KOMMAND_AI.key ? 'Saved.' : 'Key cleared.');
+}
+function aiSyncButton() {
+  const b = document.getElementById('ai-launcher');
+  if (!b) return;
+  b.classList.toggle('busy', KOMMAND_AI.busy);
+}
+
+// ── Chat log rendering ─────────────────────────────────────────────────────────
+function aiScrollLog() {
+  const log = document.getElementById('ai-log');
+  log.scrollTop = log.scrollHeight;
+}
+function aiAppendBubble(role, text) {
+  const log = document.getElementById('ai-log');
+  const div = document.createElement('div');
+  div.className = 'ai-msg ' + role;
+  div.textContent = text;
+  log.appendChild(div);
+  aiScrollLog();
+  return div;
+}
+function aiAppendThinking() {
+  const log = document.getElementById('ai-log');
+  const div = document.createElement('div');
+  div.className = 'ai-thinking';
+  div.id = 'ai-thinking-row';
+  div.textContent = 'Thinking…';
+  log.appendChild(div);
+  aiScrollLog();
+  return div;
+}
+function aiRemoveThinking() {
+  const row = document.getElementById('ai-thinking-row');
+  if (row) row.remove();
+}
+function aiAppendActionCard(toolUseId, script, explanation) {
+  const log = document.getElementById('ai-log');
+  const card = document.createElement('div');
+  card.className = 'ai-card';
+  card.id = 'ai-card-' + toolUseId;
+  card.innerHTML =
+    '<div class="ai-card-label">Proposed KOMMAND</div>' +
+    '<div class="ai-card-explain"></div>' +
+    '<div class="ai-card-script"></div>' +
+    '<div class="ai-card-row">' +
+      '<button class="ai-card-discard">Discard</button>' +
+      '<button class="ai-card-run">Run</button>' +
+    '</div>';
+  card.querySelector('.ai-card-explain').textContent = explanation || '';
+  card.querySelector('.ai-card-script').textContent = script;
+  card.querySelector('.ai-card-run').onclick = () => aiResolveRunKommand(toolUseId, true, script);
+  card.querySelector('.ai-card-discard').onclick = () => aiResolveRunKommand(toolUseId, false, script);
+  log.appendChild(card);
+  aiScrollLog();
+}
+
+// ── System prompt — rebuilt on every call so it can never drift from the
+// document actually on screen or the live command vocabulary. ──────────────────
+function aiSystemPrompt() {
+  const layerNames = Object.keys(LAYERS).join(', ');
+  const vocab = Array.from(new Set([
+    ...Object.keys(typeof UNIVERSAL_KOMMANDS !== 'undefined' ? UNIVERSAL_KOMMANDS : {}),
+    ...Object.keys(typeof POLY_KOMMANDS      !== 'undefined' ? POLY_KOMMANDS      : {}),
+    ...Object.keys(typeof KOMMANDS           !== 'undefined' ? KOMMANDS           : {}),
+    ...Object.keys(typeof KV_KOMMANDS        !== 'undefined' ? KV_KOMMANDS        : {}),
+  ])).join(' ');
+  const space = (typeof activeSpace === 'function') ? activeSpace() : 'model';
+  const tool  = (typeof activeTool !== 'undefined') ? activeTool : 'unknown';
+  const selCount = (typeof selectedIds !== 'undefined') ? selectedIds.size : 0;
+
+  return [
+'You are the conversational layer of KOMMAND, the command line inside KAD, a browser-based 2D CAD program. You act as an intelligent extension of KOMMAND, using the Claude API to interpret natural-language requests alongside KOMMAND\'s own literal command grammar.',
+'You talk with the person in plain language and use two tools to act on their drawing.',
+'',
+'TOOLS',
+'- run_kommand: sends a literal script of space-separated KOMMAND tokens through KAD\'s',
+'  real command-line parser — exactly what typing into KOMMAND and pressing Enter does.',
+'  Use it for anything expressible in KOMMAND\'s own grammar: drawing tools, dimensioning,',
+'  UNDO/REDO, CLEAR/NEW, zoom, snap toggles, etc. This is shown to the user as a card they',
+'  must click Run to execute — never assume it already ran.',
+'- place_geometry: hands back new objects directly (KAD-FORMAT.md §9 schema). Use it for',
+'  precise composite shapes where you need to compute exact coordinates yourself (e.g. a',
+'  filleted rectangle, a bolt-circle pattern) rather than express it as KOMMAND tokens.',
+'  This one applies immediately — it only ever adds geometry, never deletes or changes tools.',
+'',
+'You may call either tool, both, multiple times, or neither in a single turn. If the',
+'request needs a mouse click (TRIM, FILLET-by-pick, BREAK, drag-select) or is ambiguous',
+'or reads as more destructive than what was asked, just say so in plain text and ask —',
+'do not guess and do not call a tool speculatively.',
+'',
+'KOMMAND GRAMMAR (for run_kommand)',
+'- Tokens are space-separated. A trailing space after the last token commits, same as Enter.',
+'- Coordinates: X,Y absolute · @dX,dY relative · @D<A polar (degrees) · bare number = distance',
+'  along the current direction · <A sets angle · @<A relative angle.',
+'- Live command vocabulary right now: ' + vocab,
+'',
+'GEOMETRY SCHEMA (for place_geometry) — KAD-FORMAT.md §9',
+'  {"type":"LINE","x1":n,"y1":n,"x2":n,"y2":n}',
+'  {"type":"POINT","x":n,"y":n}',
+'  {"type":"CIRCLE","cx":n,"cy":n,"r":n}',
+'  {"type":"ARC","cx":n,"cy":n,"r":n,"startA":n,"endA":n,"ccw":true}',
+'  {"type":"POLYLINE","pts":[{"x":n,"y":n},...],"closed":true}',
+'  {"type":"TEXT","x":n,"y":n,"text":"...","height":n}',
+'- Never include "id" — KAD assigns it. "layer" is optional; if given it must be one of: ' + layerNames + '.',
+'- Millimetres always, radians always, Y is up. A full circle is CIRCLE, never a 360° ARC.',
+'- POLYLINE with closed:true must not repeat the first point.',
+'',
+'CURRENT STATE',
+'- Space: ' + space + ' · Active tool: ' + tool + ' · Selected objects: ' + selCount,
+'- Layers: ' + layerNames,
+  ].join('\n');
+}
+
+// Model-space geometry only, for place_geometry's coordinate context — the
+// KANVAS and parts blocks of a .kad document are deliberately withheld: they
+// are large, and neither tool this bridge exposes can write to either.
+function aiContext() {
+  const objs = GeoMemory.objects;
+  const MAX = 300;
+  const slice = objs.length > MAX ? objs.slice(-MAX) : objs;
+  return JSON.stringify({
+    objectCount: objs.length, truncated: objs.length > MAX, objects: slice
+  });
+}
+
+// ── Tool schemas ───────────────────────────────────────────────────────────────
+function aiToolsSpec() {
+  return [
+    {
+      name: 'run_kommand',
+      description: 'Send one or more space-separated KOMMAND tokens into KAD\'s real command-line parser, exactly as a person typing into KOMMAND and pressing Enter would. Shown to the user as a card requiring an explicit Run click before anything executes.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          script: { type: 'string', description: 'One or more space-separated KOMMAND tokens using only the live vocabulary and coordinate grammar from the system prompt.' },
+          explanation: { type: 'string', description: 'One short sentence describing what this will do, shown to the user before it runs.' }
+        },
+        required: ['script', 'explanation']
+      }
+    },
+    {
+      name: 'place_geometry',
+      description: 'Add new geometry objects directly to KAD\'s drawing in its own schema (KAD-FORMAT.md §9). Applied immediately — additive only, never deletes or modifies existing objects.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          objects: {
+            type: 'array',
+            description: 'Array of new objects, each one of KAD\'s six schema types.',
+            items: { type: 'object' }
+          }
+        },
+        required: ['objects']
+      }
+    }
+  ];
+}
+
+// ── place_geometry execution — reuses the same validate-then-apply,
+// all-or-nothing pattern as before. ─────────────────────────────────────────────
+const AI_TYPES = ['LINE','POINT','CIRCLE','ARC','POLYLINE','TEXT'];
+const _kNum = v => typeof v === 'number' && isFinite(v);
+
+function aiValidate(o, i) {
+  const at = ' (object ' + (i + 1) + ')';
+  if (!o || typeof o !== 'object') throw new Error('not an object' + at);
+  if (!AI_TYPES.includes(o.type)) throw new Error('unknown type "' + o.type + '"' + at);
+  if (o.layer !== undefined && !LAYERS[o.layer]) throw new Error('unknown layer "' + o.layer + '"' + at);
+  switch (o.type) {
+    case 'LINE':
+      if (!_kNum(o.x1) || !_kNum(o.y1) || !_kNum(o.x2) || !_kNum(o.y2)) throw new Error('LINE needs numeric x1,y1,x2,y2' + at);
+      break;
+    case 'POINT':
+      if (!_kNum(o.x) || !_kNum(o.y)) throw new Error('POINT needs numeric x,y' + at);
+      break;
+    case 'CIRCLE':
+      if (!_kNum(o.cx) || !_kNum(o.cy) || !_kNum(o.r) || o.r <= 0) throw new Error('CIRCLE needs numeric cx,cy and r>0' + at);
+      break;
+    case 'ARC':
+      if (!_kNum(o.cx) || !_kNum(o.cy) || !_kNum(o.r) || o.r <= 0 || !_kNum(o.startA) || !_kNum(o.endA)) throw new Error('ARC needs numeric cx,cy,r>0,startA,endA' + at);
+      break;
+    case 'POLYLINE':
+      if (!Array.isArray(o.pts) || o.pts.length < 2) throw new Error('POLYLINE needs at least 2 points' + at);
+      for (const p of o.pts) if (!p || !_kNum(p.x) || !_kNum(p.y)) throw new Error('POLYLINE has a non-numeric point' + at);
+      break;
+    case 'TEXT':
+      if (!_kNum(o.x) || !_kNum(o.y) || typeof o.text !== 'string' || !o.text.length) throw new Error('TEXT needs numeric x,y and non-empty text' + at);
+      if (o.height !== undefined && (!_kNum(o.height) || o.height <= 0)) throw new Error('TEXT height must be a positive number' + at);
+      break;
+  }
+}
+function aiApply(o) {
+  const L = o.layer || activeLayer;
+  switch (o.type) {
+    case 'LINE':     return GeoMemory.addLine(o.x1, o.y1, o.x2, o.y2, L);
+    case 'POINT':    return GeoMemory.addPoint(o.x, o.y, L);
+    case 'CIRCLE':   return GeoMemory.addCircle(o.cx, o.cy, o.r, L);
+    case 'ARC':      return GeoMemory.addArc(o.cx, o.cy, o.r, o.startA, o.endA, o.ccw !== false, L);
+    case 'POLYLINE': return GeoMemory.addPolyline(o.pts, !!o.closed, L);
+    case 'TEXT':     return GeoMemory.addText(o.x, o.y, o.text, _kNum(o.height) ? o.height : 5, L);
+  }
+}
+// Returns a tool_result content string. Throws never — every failure path
+// reports back to Claude as text instead, so the conversation can recover.
+function aiRunPlaceGeometry(input) {
+  let objects = input && input.objects;
+  if (!Array.isArray(objects)) return 'Error: "objects" was not an array — nothing added.';
+  try {
+    objects.forEach(aiValidate);
+  } catch (err) {
+    return 'Error: ' + err.message + ' — nothing added.';
+  }
+  if (!objects.length) return 'No objects given — nothing added.';
+  const beforeObjects = GeoMemory.objects.slice();
+  const beforeNextId  = GeoMemory.nextId;
+  try {
+    for (const o of objects) aiApply(o);
+  } catch (err) {
+    GeoMemory.objects = beforeObjects;
+    GeoMemory.nextId  = beforeNextId;
+    updateProps(); render();
+    return 'Error applying geometry: ' + err.message + ' — rolled back, nothing added.';
+  }
+  markModelDirty();
+  captureHistory('model');
+  render();
+  return 'Added ' + objects.length + ' object' + (objects.length === 1 ? '' : 's') + ' to the drawing.';
+}
+
+// ── run_kommand execution — only ever called from aiResolveRunKommand,
+// i.e. after an explicit user click, and always through the ORIGINAL
+// unwrapped parser so a proposed script can never re-trigger the AI prefix
+// check recursively. ─────────────────────────────────────────────────────────
+function aiRunScript(script) {
+  const echoBefore = (kEcho && kEcho.textContent) || '';
+  const countBefore = GeoMemory.objects.length;
+  window._aiOriginalSubmitKommandText(script.trim() + ' ');
+  const echoAfter = (kEcho && kEcho.textContent) || '';
+  const d = GeoMemory.objects.length - countBefore;
+  // Object count is ground truth; the echo is only corroborating detail,
+  // because KOMMAND's echo often reports on the COMMIT rather than the draw.
+  const delta = d > 0 ? d + ' object' + (d === 1 ? '' : 's') + ' added'
+              : d < 0 ? (-d) + ' object' + (d === -1 ? '' : 's') + ' removed'
+              : 'no change to the object count';
+  const echo = (echoAfter && echoAfter !== echoBefore) ? echoAfter : '';
+  return 'Ran: ' + script + ' \u2014 ' + delta
+       + (echo ? '; KOMMAND echoed: ' + echo : '');
+}
+
+function aiResolveRunKommand(toolUseId, accepted, script) {
+  const card = document.getElementById('ai-card-' + toolUseId);
+  let resultText;
+  if (accepted) {
+    try {
+      resultText = aiRunScript(script);
+    } catch (err) {
+      resultText = 'Error running script: ' + err.message;
+    }
+  } else {
+    resultText = 'User discarded this proposal without running it.';
+  }
+  if (card) {
+    card.classList.add('resolved');
+    const r = document.createElement('div');
+    r.className = 'ai-card-result';
+    r.textContent = (accepted ? '✓ Ran — ' : '✕ Discarded — ') + resultText;
+    card.appendChild(r);
+  }
+  aiContinueWithToolResult(toolUseId, resultText);
+}
+
+// ── The conversation loop ──────────────────────────────────────────────────────
+// KOMMAND_AI.transcript holds full Anthropic-format turns, including raw tool_use
+// content blocks on assistant turns, so tool_result blocks on the following
+// user turn can reference them by id exactly as the API requires.
+async function aiCallAPI() {
+  const endpoint = KOMMAND_AI.endpoint || AI_DEFAULT_ENDPOINT;
+  const direct   = !KOMMAND_AI.endpoint;
+  const headers = { 'content-type': 'application/json' };
+  if (direct) {
+    headers['x-api-key'] = KOMMAND_AI.key;
+    headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+  } else {
+    headers['authorization'] = 'Bearer ' + KOMMAND_AI.key;
+  }
+  const res = await fetch(endpoint, {
+    method: 'POST', headers: headers,
+    body: JSON.stringify({
+      model: KOMMAND_AI.model, max_tokens: 2048,
+      system: aiSystemPrompt(),
+      tools: aiToolsSpec(),
+      messages: KOMMAND_AI.transcript
+    })
+  });
+  if (!res.ok) {
+    let detail = res.status + ' ' + res.statusText;
+    try { const eb = await res.json(); if (eb && eb.error && eb.error.message) detail = eb.error.message; } catch (e) {}
+    throw new Error(detail);
+  }
+  return await res.json();
+}
+
+function aiSetBusy(b) {
+  KOMMAND_AI.busy = b;
+  aiSyncButton();
+  document.getElementById('ai-send').disabled = b;
+}
+
+async function aiSendChat() {
+  const input = document.getElementById('ai-input');
+  const text = input.value.trim();
+  if (!text || KOMMAND_AI.busy) return;
+  if (!KOMMAND_AI.key) { aiToggleSettings(true); return; }
+  input.value = '';
+  aiAppendBubble('user', text);
+  KOMMAND_AI.transcript.push({ role: 'user', content: [
+    { type: 'text', text: 'Current drawing (reference only, do not repeat): ' + aiContext() + '\n\n' + text }
+  ]});
+  KOMMAND_AI.turnDepth = 0;
+  await aiRunTurn();
+}
+function aiOnSendClick() { aiSendChat(); }
+
+async function aiRunTurn() {
+  if (++KOMMAND_AI.turnDepth > 6) {
+    aiAppendBubble('error', 'AI: stopped after too many chained tool calls — try a simpler request.');
+    aiSetBusy(false);
+    return;
+  }
+  aiSetBusy(true);
+  aiAppendThinking();
+
+  let data;
+  try {
+    data = await aiCallAPI();
+  } catch (err) {
+    aiRemoveThinking();
+    aiAppendBubble('error', 'AI: ' + err.message);
+    aiSetBusy(false);
+    return;
+  }
+  aiRemoveThinking();
+
+  const content = Array.isArray(data.content) ? data.content : [];
+  KOMMAND_AI.transcript.push({ role: 'assistant', content: content });
+
+  const textBlocks = content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  if (textBlocks) aiAppendBubble('assistant', textBlocks);
+
+  const toolUses = content.filter(b => b.type === 'tool_use');
+  if (!toolUses.length) { aiSetBusy(false); return; }
+
+  // place_geometry calls resolve immediately; the first run_kommand pauses
+  // the loop for a user click. Anything after that first pending card is
+  // queued and only handled once the pending one is resolved, to keep the
+  // API's one-tool_result-per-tool_use-id contract simple to reason about.
+  const toolResults = [];
+  let pendingCardShown = false;
+  for (const tu of toolUses) {
+    if (tu.name === 'place_geometry') {
+      const result = aiRunPlaceGeometry(tu.input);
+      aiAppendBubble('system', result);
+      toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result });
+    } else if (tu.name === 'run_kommand' && !pendingCardShown) {
+      pendingCardShown = true;
+      aiAppendActionCard(tu.id, tu.input && tu.input.script || '', tu.input && tu.input.explanation || '');
+    } else {
+      toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: 'Skipped — only one run_kommand proposal is handled per turn; ask again if this was still needed.' });
+    }
+  }
+
+  if (pendingCardShown) {
+    // Wait for aiResolveRunKommand to supply that one result and any
+    // already-collected place_geometry results together.
+    KOMMAND_AI._pendingResults = toolResults;
+    aiSetBusy(false);
+    return;
+  }
+
+  KOMMAND_AI.transcript.push({ role: 'user', content: toolResults });
+  await aiRunTurn();
+}
+
+async function aiContinueWithToolResult(toolUseId, resultText) {
+  const results = (KOMMAND_AI._pendingResults || []).slice();
+  results.push({ type: 'tool_result', tool_use_id: toolUseId, content: resultText });
+  KOMMAND_AI._pendingResults = null;
+  KOMMAND_AI.transcript.push({ role: 'user', content: results });
+  await aiRunTurn();
+}
+
+// ── KOMMAND interception — an external wrap, not an edit ────────────────────────
+// The original function is preserved and called for everything that is not an
+// AI line, so the tokenizer, coordinate grammar and every existing command
+// behave identically. The check runs on the RAW text, before the original's
+// comma/angle normalisation, because that pass rewrites "a line, 40 long" into
+// "a line,40 long" — harmless for coordinates, destructive for prose.
+(function aiInstallKommandHook() {
+  if (typeof submitKommandText !== 'function') return;
+  const original = submitKommandText;
+  window._aiOriginalSubmitKommandText = original;
+
+  window.submitKommandText = function(rawText) {
+    const m = /^\s*@?AI\b[:\s]*([\s\S]*)$/i.exec(rawText || '');
+    if (!m) return original.apply(this, arguments);
+    kommandClear();
+    aiOpenDock();
+    const prompt = m[1].trim();
+    if (prompt) {
+      document.getElementById('ai-input').value = prompt;
+      aiSendChat();
+    }
+  };
+})();
+
+// ── UI wiring ────────────────────────────────────────────────────────────────
+window.addEventListener('load', function aiInit() {
+  aiLoadSettings();
+  aiSyncButton();
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('ai-dock').classList.contains('open')) {
+      e.stopPropagation();
+      aiCloseDock();
+    }
+  }, true);
+
+  const input = document.getElementById('ai-input');
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSendChat(); }
+  });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 90) + 'px';
+  });
+
+  aiAppendBubble('system', 'AI is ready — ask for geometry, edits, or explanations of what\'s on the canvas.');
+});
+</script>
 </body>
 </html>
