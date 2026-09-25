@@ -458,7 +458,7 @@ button, .tb-menu-item, .tb-dd-item, .layer-row, .tab-item, .sb-item.sb-toggle {
 .op-btn.stepimp { color:var(--accent); border-color:var(--accent); }
 .op-btn.stepimp:hover { background:rgba(0,212,255,0.08); }
 .op-btn svg { width:12px; height:12px; flex-shrink:0; }
-#load-kad, #load-dxf, #load-dwg, #load-nc1, #pdf-file, #step-file { display:none; }
+#load-kad, #load-dxf, #load-dwg, #load-nc1, #load-cam, #pdf-file, #step-file { display:none; }
 
 #coord-panel { flex-shrink:0; border-bottom:1px solid var(--border); }
 #coord-panel-head { padding:6px 14px 5px; font-family:var(--fu); font-size:12px; color:var(--t3); letter-spacing:0.14em; text-transform:uppercase; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
@@ -2258,7 +2258,9 @@ body.kanvas-mode #app {
         <div class="tb-dd-item" onclick="document.getElementById('load-dxf').click();closeMenus()">Import .dxf<span class="dd-key"></span></div>
         <div class="tb-dd-item" id="menu-import-dwg" style="display:none;" onclick="document.getElementById('load-dwg').click();closeMenus()">Import .dwg<span class="dd-key"></span></div>
         <div class="tb-dd-item" onclick="document.getElementById('load-nc1').click();closeMenus()">Import .nc1<span class="dd-key"></span></div>
+        <div class="tb-dd-item" onclick="document.getElementById('load-cam').click();closeMenus()">Import .cam (FastCAM)<span class="dd-key"></span></div>
         <div class="tb-dd-item" onclick="openPDF();closeMenus()">Import PDF<span class="dd-key">Ctrl ⇧ O</span></div>
+        <div class="tb-dd-item" onclick="openSketchImport();closeMenus()">Import Sketch / Image…<span class="dd-key"></span></div>
         <div class="tb-dd-item" style="display:none;" onclick="openSTEP();closeMenus()">Import STEP<span class="dd-key"></span></div>
         <div class="tb-dd-item" onclick="document.getElementById('vec-file-input').click();closeMenus()">Import .svg / .kvs<span class="dd-key"></span></div>
         <div class="tb-dd-sep"></div>
@@ -2553,6 +2555,12 @@ body.kanvas-mode #app {
       Import NC1
     </button>
     <input type="file" id="load-nc1" accept=".nc1,.NC1,.dstv,.DSTV" onchange="importNC1(event)">
+    <button class="op-btn nc1" onclick="document.getElementById('load-cam').click()"
+            title="Import a FastCAM .cam drawing — auto-fills part data">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Import CAM
+    </button>
+    <input type="file" id="load-cam" accept=".cam,.CAM" onchange="importCAM(event)">
     <button class="op-btn pdfimp" onclick="openPDF()" title="Import vector line art and text from a PDF — fetches pdf.js from a CDN on first use">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15v-4h1.5a1.5 1.5 0 0 1 0 3H9"/><path d="M13 15v-4h1.8"/><path d="M13 13h1.3"/></svg>
       Import PDF
@@ -3592,6 +3600,33 @@ body.kanvas-mode #app {
         <div id="nc1-grades" class="pd-grades" style="max-height:220px;overflow-y:auto;margin-bottom:4px;"></div>
       </div>
 
+      <div id="dlg-cam-section" style="display:none;">
+        <div class="dlg-section-label">Part data (from FastCAM header) —</div>
+        <div class="dlg-file-info">
+          <div class="fi-row">Material (as written)<span id="dlg-cam-material-raw">—</span></div>
+          <div class="fi-row">Part outline<span id="dlg-cam-profile">—</span></div>
+          <div class="fi-row">Part size<span id="dlg-cam-size">—</span></div>
+          <div id="dlg-cam-notes" style="display:none;margin-top:6px;font-size:12px;color:var(--amber);line-height:1.45;"></div>
+        </div>
+        <div class="pd-frow">
+          <label for="dlg-cam-name">Part name</label>
+          <input id="dlg-cam-name" type="text" maxlength="64" autocomplete="off">
+        </div>
+        <div class="pd-frow2">
+          <div class="pd-frow">
+            <label for="dlg-cam-qty">Qty</label>
+            <input id="dlg-cam-qty" type="number" min="1" step="1" inputmode="numeric">
+          </div>
+          <div class="pd-frow">
+            <label for="dlg-cam-thick">Thickness (mm)</label>
+            <input id="dlg-cam-thick" type="number" min="0.01" step="0.01" inputmode="decimal">
+          </div>
+        </div>
+        <div class="pd-sec-label">Material grade — confirm before import</div>
+        <div class="dlg-file-info" style="padding:6px 10px;margin-bottom:6px;"><div class="fi-row"><span id="dlg-cam-grade-note">—</span></div></div>
+        <div id="cam-grades" class="pd-grades" style="max-height:220px;overflow-y:auto;margin-bottom:4px;"></div>
+      </div>
+
       <div class="dlg-section-label">Canvas —</div>
       <div class="dlg-merge-grid">
         <button class="dlg-merge-btn selected" id="dmb-merge" onclick="selectDlgMerge('merge')">
@@ -3678,6 +3713,202 @@ body.kanvas-mode #app {
     <div class="dlg-actions">
       <button class="dlg-btn cancel" onclick="closePdfImport()">Cancel</button>
       <button class="dlg-btn commit" id="pdfi-go" onclick="pdfCommitImport()">Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DIMENSIONED-IMAGE / SKETCH IMPORT ══════════════════════════════════ -->
+<input type="file" id="sketch-file" accept="image/*,.pdf,application/pdf" style="display:none" onchange="onSketchFile(event)">
+
+<style>
+#sketch-import-overlay, #sketch-review-overlay {
+  position: fixed; inset: 0;
+  background: rgba(4,6,10,0.82);
+  backdrop-filter: blur(3px);
+  z-index: 800;
+  display: none; align-items: center; justify-content: center;
+}
+#sketch-import-overlay.open, #sketch-review-overlay.open { display: flex; }
+#sketch-import-dialog, #sketch-review-dialog {
+  background: var(--panel);
+  border: 1px solid var(--border-hi);
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(0,212,255,0.08);
+  font-family: var(--fu);
+  display: flex; flex-direction: column;
+  max-height: min(90vh, 860px);
+  overflow: hidden;
+}
+#sketch-import-dialog { width: 420px; max-width: 95vw; }
+#sketch-review-dialog { width: 960px; max-width: 96vw; }
+#sketch-import-dialog .dlg-head, #sketch-review-dialog .dlg-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; flex-shrink: 0;
+  background: var(--panel2); border-bottom: 1px solid var(--border);
+}
+#sketch-import-dialog .dlg-title, #sketch-review-dialog .dlg-title {
+  font-size: 13px; font-weight: 500; color: var(--accent);
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+#sketch-import-dialog .dlg-close, #sketch-review-dialog .dlg-close {
+  background: none; border: none; color: var(--t3);
+  cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px;
+}
+#sketch-import-dialog .dlg-close:hover, #sketch-review-dialog .dlg-close:hover { color: var(--t1); }
+#sketch-import-dialog .dlg-body { padding: 16px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+#sketch-import-dialog .dlg-actions, #sketch-review-dialog .dlg-actions {
+  flex-shrink: 0; margin: 0; padding: 12px 16px;
+  background: var(--panel); border-top: 1px solid var(--border);
+}
+#ski-thumb {
+  border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+  margin-bottom: 14px; background: var(--void); max-height: 220px;
+}
+#ski-thumb canvas { max-height: 220px; object-fit: contain; }
+
+/* ── review ── */
+#skr-split { display: flex; gap: 0; flex: 1 1 auto; min-height: 0; }
+#skr-left {
+  flex: 1 1 52%; min-width: 0; padding: 14px;
+  overflow-y: auto; border-right: 1px solid var(--border);
+}
+#skr-right { flex: 1 1 48%; min-width: 0; padding: 14px; overflow-y: auto; }
+#skr-canvas-host {
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--void); overflow: hidden;
+}
+#skr-hint { font-size: 12px; color: var(--t3); margin-top: 8px; line-height: 1.5; }
+.skr-note {
+  font-size: 12px; color: #e6a23c; line-height: 1.45;
+  border-left: 2px solid #e6a23c; padding: 4px 0 4px 8px; margin-top: 6px;
+}
+.skr-dim, .skr-ent {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 4px; border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--t2);
+}
+.skr-dim.off, .skr-ent.off { opacity: 0.4; }
+.skr-badge {
+  flex: 0 0 22px; text-align: center; font-family: var(--fm);
+  font-size: 11px; color: var(--accent);
+  border: 1px solid var(--border-hi); border-radius: 3px; padding: 1px 0;
+}
+.skr-val {
+  width: 76px; background: var(--void); border: 1px solid var(--border-hi);
+  border-radius: 3px; color: var(--t1); font-family: var(--fm);
+  font-size: 12px; padding: 3px 6px;
+}
+.skr-val:focus { outline: none; border-color: var(--accent); }
+.skr-unit { flex: 0 0 22px; color: var(--t3); font-size: 11px; }
+.skr-bind { flex: 1 1 auto; color: var(--t3); font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skr-res { flex: 0 0 auto; font-family: var(--fm); font-size: 11px; }
+.skr-flag {
+  flex: 0 0 auto; font-size: 10px; letter-spacing: 0.04em;
+  color: #e6a23c; border: 1px solid #e6a23c; border-radius: 3px; padding: 0 4px;
+}
+.skr-etype { flex: 0 0 52px; color: var(--t2); font-size: 11px; }
+.skr-eid { flex: 1 1 auto; color: var(--t3); font-family: var(--fm); font-size: 11px; }
+.skr-empty { font-size: 12px; color: var(--red); padding: 8px 2px; line-height: 1.5; }
+#skr-dims, #skr-ents { max-height: 260px; overflow-y: auto; }
+#skr-ents { max-height: 150px; }
+</style>
+
+<div id="sketch-import-overlay">
+  <div id="sketch-import-dialog">
+    <div class="dlg-head">
+      <span class="dlg-title">Import Sketch / Dimensioned Image</span>
+      <button class="dlg-close" onclick="closeSketchImport()">✕</button>
+    </div>
+    <div class="dlg-body">
+      <div id="ski-thumb"></div>
+      <div class="dlg-file-info">
+        <div class="fi-name" id="ski-file">—</div>
+        <div class="fi-row">Source<span id="ski-src">—</span></div>
+        <div class="fi-row">Raster<span id="ski-size">—</span></div>
+      </div>
+
+      <div class="dlg-section-label">Units for unmarked values —</div>
+      <div class="dlg-unit-grid">
+        <button class="dlg-unit-btn selected" data-ski-group="unit" data-ski-value="auto" onclick="skiPick('unit','auto')">
+          <span class="dub-label">Auto</span><span class="dub-sub">read from drawing</span>
+        </button>
+        <button class="dlg-unit-btn" data-ski-group="unit" data-ski-value="mm" onclick="skiPick('unit','mm')">
+          <span class="dub-label">mm</span><span class="dub-sub">metric</span>
+        </button>
+        <button class="dlg-unit-btn" data-ski-group="unit" data-ski-value="in" onclick="skiPick('unit','in')">
+          <span class="dub-label">in</span><span class="dub-sub">imperial</span>
+        </button>
+      </div>
+
+      <div class="dlg-section-label">Image prep —</div>
+      <div class="dlg-merge-grid">
+        <button class="dlg-merge-btn selected" data-ski-group="prep" data-ski-value="raw" onclick="skiPick('prep','raw')">
+          <span class="dmb-title">As-is</span>
+          <span class="dmb-sub">Clean scans and printed PDFs</span>
+        </button>
+        <button class="dlg-merge-btn" data-ski-group="prep" data-ski-value="enhance" onclick="skiPick('prep','enhance')">
+          <span class="dmb-title">Enhance</span>
+          <span class="dmb-sub">Grey + contrast · phone photos</span>
+        </button>
+      </div>
+
+      <div class="dlg-section-label">Canvas —</div>
+      <div class="dlg-merge-grid">
+        <button class="dlg-merge-btn selected" data-ski-group="place" data-ski-value="merge" onclick="skiPick('place','merge')">
+          <span class="dmb-title">Merge</span>
+          <span class="dmb-sub">Add to existing geometry</span>
+        </button>
+        <button class="dlg-merge-btn" data-ski-group="place" data-ski-value="replace" onclick="skiPick('place','replace')">
+          <span class="dmb-title">Replace</span>
+          <span class="dmb-sub">Clear canvas first</span>
+        </button>
+      </div>
+
+      <div id="ski-status" class="fi-row" style="margin-top:8px;display:block;line-height:1.5;"></div>
+    </div>
+    <div class="dlg-actions">
+      <button class="dlg-btn cancel" onclick="closeSketchImport()">Cancel</button>
+      <button class="dlg-btn commit" id="ski-go" onclick="skiRun()">Read drawing</button>
+    </div>
+  </div>
+</div>
+
+<div id="sketch-review-overlay">
+  <div id="sketch-review-dialog">
+    <div class="dlg-head">
+      <span class="dlg-title">Review before placing</span>
+      <button class="dlg-close" onclick="closeSketchReview()">✕</button>
+    </div>
+    <div id="skr-split">
+      <div id="skr-left">
+        <div id="skr-canvas-host"></div>
+        <div id="skr-hint">
+          Blue is the reconstructed geometry, built from the dimension values — not traced from the pixels.
+          It will not sit exactly on the sketch, and should not: the sketch is out of scale.
+          Check that each callout below is attached to the edge you meant.
+        </div>
+        <div id="skr-notes" style="display:none;"></div>
+      </div>
+      <div id="skr-right">
+        <div class="dlg-file-info" id="skr-meta"></div>
+
+        <div class="dlg-section-label">Dimensions — edit any misread value</div>
+        <div id="skr-dims"></div>
+
+        <div class="dlg-section-label" style="margin-top:14px;">Entities</div>
+        <div id="skr-ents"></div>
+
+        <label class="fi-row" style="margin-top:14px;cursor:pointer;">
+          <span style="color:var(--t2);">Place callouts as DIM objects</span>
+          <input type="checkbox" id="skr-place-dims">
+        </label>
+      </div>
+    </div>
+    <div class="dlg-actions">
+      <button class="dlg-btn cancel" onclick="closeSketchReview()">Cancel</button>
+      <button class="dlg-btn cancel" onclick="skiResolve()">Re-solve</button>
+      <button class="dlg-btn commit" onclick="skiCommit()">Place geometry</button>
     </div>
   </div>
 </div>
@@ -3810,12 +4041,44 @@ body.kanvas-mode #app {
 'use strict';
 
 
-const KAD_APP_VERSION = '1.2.0';
+const KAD_APP_VERSION = '1.4.0';
 
 // Public changelog. Only list features once they're fully live (no display:none
 // gates, no feature flags left off). Newest entry first. Keep entries short —
 // this is the "what shipped", not the dev log; that stays in KAD-DEV-NOTES.md.
 const KAD_CHANGELOG = [
+  {
+    version: '1.4.0',
+    date: '2026-09-25',
+    groups: [
+      {
+        label: 'FastCAM .CAM import',
+        items: [
+          'FastCAM drawings open directly \u2014 File \u203a Import .cam (FastCAM), or the Import CAM button. The file is read inside KAD itself: no conversion step, no download, and it works offline',
+          'Lines, arcs, full circles and text come across on their own FastCAM layers, through the same import dialog as DXF \u2014 merge into the drawing or replace it',
+          'FastCAM files are read in millimetres, so there is no unit picker to get wrong. The dialog shows the part size in both mm and inches, so a file in an unexpected unit shows up before you commit',
+          'The part fills itself in: name, thickness and material come from the FastCAM header, and a grade is suggested from the material text (A36, A572, A588, A514, A1011, 304, 316, 5052, 6061 and more) for you to confirm. When the text names no grade, the dialog says so \u2014 nothing is assigned silently',
+          'The cut outline and its holes are found automatically and become one part, so the BOM can weigh it straight away. Side views, dimension flats and notes stay in the drawing but out of the part',
+          'Degree signs and inch marks come through intact. FastCAM writes the Windows code page, which an ordinary text read turns into \ufffd',
+          'FastCAM\u2019s cutting data \u2014 paths, kerf and operation, tools, blocks, notes and the saved view \u2014 is kept with the part, untouched, and survives Save and reopen. It does not change the imported geometry',
+          'Anything the reader does not recognise \u2014 an unfamiliar record, a newer file version, a character lost before the file reached KAD \u2014 is counted and reported in the dialog rather than dropped',
+        ],
+      },
+      {
+        label: 'Parts & Materials',
+        items: [
+          'Clear All, New Document and Replace on import now clear the parts list too. A part that outlived its geometry would quietly claim whatever was drawn or imported next \u2014 its name, grade and quantity landing on new geometry, and a BOM row for a part that no longer existed',
+          'Undo and Redo now cover parts. Creating, editing or removing a part can be undone, and undoing Clear All or an import brings the parts back with the geometry, or takes them away with it. The parts list sat outside undo history altogether before',
+        ],
+      },
+      {
+        label: 'Interface',
+        items: [
+          'Zoom Extents centres the drawing on phones and high-resolution screens. It was putting the middle of the drawing on the bottom edge of the view or below it \u2014 which is where every import landed',
+        ],
+      },
+    ],
+  },
   {
     version: '1.2.0',
     date: '2026-09-14',
@@ -4177,6 +4440,10 @@ Object.defineProperties(KAD.formats = {}, {
   }) },
   nc1: { enumerable: true, get: () => ({
     parse: parseNC1,   // import-only format — no export exists, see header
+  }) },
+  cam: { enumerable: true, get: () => ({
+    parse:  parseCAM,  // import-only — FastCAM save file; see FASTCAM .CAM IMPORT
+    decode: camDecode, // bytes -> text: strict UTF-8, else windows-1252
   }) },
   dwg: { enumerable: true, get: () => ({
     normalize: kadDwgNormalize,
@@ -4974,7 +5241,7 @@ const GeoMemory = {
     this.removeMany([id]);
     commitDocumentChange();   // fires even when nothing matched, as it always has
   },
-  clear() { this.objects=[]; this.nextId=1; commitDocumentChange(); },
+  clear() { this.objects=[]; this.nextId=1; kadPruneParts(); commitDocumentChange(); },
 
   allEndpoints() {
     const pts=[];
@@ -5911,7 +6178,14 @@ function snapshotOf(space) {
              layers:_clone(KVM.layers), activeLayer:KVM.activeLayer, nextId:KVM.nextId };
   }
   return { objects:_clone(GeoMemory.objects), nextId:GeoMemory.nextId,
-           layers:_clone(LAYERS), activeLayer:activeLayer };
+           layers:_clone(LAYERS), activeLayer:activeLayer, parts:_partsSnapshot() };
+}
+
+// Parts ride in the model snapshot: every part edit calls markModelDirty() and
+// each entity carries its partId, so the two must undo together.
+function _partsSnapshot() {
+  try { return { parts:_clone(PartLibrary.parts), nextColor:PartLibrary._nextColor }; }
+  catch (e) { return null; }   // PartLibrary not initialised yet during boot
 }
 
 function restoreSnapshot(space, s) {
@@ -5930,6 +6204,11 @@ function restoreSnapshot(space, s) {
       kvScheduleDraw();
     } else {
       GeoMemory.replaceAll(_clone(s.objects), s.nextId);
+      if (s.parts) {
+        PartLibrary.parts = _clone(s.parts.parts);
+        PartLibrary._nextColor = s.parts.nextColor;
+        if (typeof updatePartsPanel === 'function') updatePartsPanel();
+      }
       for (const k of Object.keys(LAYERS)) delete LAYERS[k];
       Object.assign(LAYERS, _clone(s.layers));
       activeLayer = s.activeLayer;
@@ -9391,7 +9670,7 @@ function zoomExtents() {
   const zoom=Math.min(canvas.clientWidth/(rx*(1+2*pad)), canvas.clientHeight/(ry*(1+2*pad)));
   cam.zoom=Math.max(cam.minZoom,Math.min(cam.maxZoom,zoom));
   cam.panX=canvas.clientWidth/2-((x0+x1)/2)*cam.zoom;
-  cam.panY=canvas.height/2+((y0+y1)/2)*cam.zoom;
+  cam.panY=canvas.clientHeight/2+((y0+y1)/2)*cam.zoom;
   document.getElementById('prop-zoom').textContent=fmtZoom(cam.zoom); updateGridLabel();
   updateGridLabel(); render(); showToast('Zoom Extents');
 }
@@ -11689,6 +11968,8 @@ function closeDxfDialog() {
   if (dwgIn) dwgIn.value = '';
   const nc1In = document.getElementById('load-nc1');
   if (nc1In) nc1In.value = '';
+  const camIn = document.getElementById('load-cam');
+  if (camIn) camIn.value = '';
   dxfDialog.parsed = null;
   dxfDialog.source = 'dxf';
 }
@@ -11710,10 +11991,10 @@ function openImportDialog(parsed, filename, kind) {
 
   dxfDialog.parsed   = parsed;
   dxfDialog.filename = filename;
-  dxfDialog.source   = (kind === 'dwg') ? 'dwg' : (kind === 'nc1') ? 'nc1' : 'dxf';
+  dxfDialog.source   = (kind === 'dwg') ? 'dwg' : (kind === 'nc1') ? 'nc1' : (kind === 'cam') ? 'cam' : 'dxf';
 
   document.getElementById('dlg-title').textContent =
-    kind === 'dwg' ? 'Import DWG' : kind === 'nc1' ? 'Import NC1' : 'Import DXF';
+    kind === 'dwg' ? 'Import DWG' : kind === 'nc1' ? 'Import NC1' : kind === 'cam' ? 'Import CAM (FastCAM)' : 'Import DXF';
   document.getElementById('dlg-filename').textContent     = filename;
   document.getElementById('dlg-entity-count').textContent =
     totalSegs + ' segments' +
@@ -11736,8 +12017,16 @@ function openImportDialog(parsed, filename, kind) {
 
   const unitSection = document.getElementById('dlg-unit-section');
   const nc1Section   = document.getElementById('dlg-nc1-section');
+  const camSection   = document.getElementById('dlg-cam-section');
+  if (camSection) camSection.style.display = (kind === 'cam') ? 'block' : 'none';
 
-  if (kind === 'nc1') {
+  if (kind === 'cam') {
+    // FastCAM stores millimetres; like DSTV there is no unit to choose, and a
+    // picker would only invite a 25.4x scrap error.
+    if (unitSection) unitSection.style.display = 'none';
+    if (nc1Section)  nc1Section.style.display  = 'none';
+    camFillDialog(parsed);
+  } else if (kind === 'nc1') {
     if (unitSection) unitSection.style.display = 'none';
     if (nc1Section)  nc1Section.style.display  = 'block';
     const insEl = document.getElementById('dlg-insunits');
@@ -11821,9 +12110,10 @@ function commitDxfImport() {
   const nc1FirstThick = document.getElementById('dlg-nc1-thick') ? document.getElementById('dlg-nc1-thick').value : '';
   const nc1GradeTile  = document.querySelector('#nc1-grades .pd-tile.sel');
   const nc1FirstGrade = nc1GradeTile ? nc1GradeTile.dataset.gid : null;
+  const camFields     = (source === 'cam') ? camReadDialog() : null;
 
   let S;
-  if (source === 'nc1') {
+  if (source === 'nc1' || source === 'cam') {
     S = 1;
   } else if (unitSel === 'auto') {
     S = (DXF_INSUNITS_TO_MM[parsed.rawInsUnits] != null ? DXF_INSUNITS_TO_MM[parsed.rawInsUnits] : 1);
@@ -11872,7 +12162,9 @@ function commitDxfImport() {
   const hatches = parsed.hatches || [];
   const bezs    = parsed.beziers || [];
 
-  const partEntityIds = (source === 'nc1' && parsed.ncParts) ? parsed.ncParts.map(() => []) : null;
+  const partTag  = source === 'nc1' ? '_ncPart' : source === 'cam' ? '_camPart' : null;
+  const partList = source === 'nc1' ? parsed.ncParts : source === 'cam' ? parsed.camParts : null;
+  const partEntityIds = (partTag && partList) ? partList.map(() => []) : null;
 
   const _planeRemap = Object.create(null);
   if (Array.isArray(parsed.planes)) {
@@ -11895,18 +12187,19 @@ function commitDxfImport() {
       ln.layer || 'Layer_0'
     );
     _setPlane(o, _pl(ln));
-    if (partEntityIds && ln._ncPart != null) partEntityIds[ln._ncPart].push(o.id);
+    if (partEntityIds && ln[partTag] != null) partEntityIds[ln[partTag]].push(o.id);
   }
   for (const c of circles) {
     const o = GeoMemory.addCircle(c.cx*S, c.cy*S, c.r*S, c.layer || 'Layer_0');
     _setPlane(o, _pl(c));
-    if (partEntityIds && c._ncPart != null) partEntityIds[c._ncPart].push(o.id);
+    if (partEntityIds && c[partTag] != null) partEntityIds[c[partTag]].push(o.id);
   }
   for (const a of arcs) {
     const o = GeoMemory.addArc(a.cx*S, a.cy*S, a.r*S,
                      a.startA*Math.PI/180, a.endA*Math.PI/180, true,
                      a.layer || 'Layer_0');
     _setPlane(o, _pl(a));
+    if (partEntityIds && a[partTag] != null) partEntityIds[a[partTag]].push(o.id);
   }
   for (const pl of polys) {
     // Scale the vertices but NOT the bulge — bulge is tan(theta/4), a pure
@@ -11919,7 +12212,7 @@ function commitDxfImport() {
     });
     const o = GeoMemory.addPolyline(pts, pl.closed, pl.layer || 'Layer_0');
     _setPlane(o, _pl(pl));
-    if (partEntityIds && pl._ncPart != null) partEntityIds[pl._ncPart].push(o.id);
+    if (partEntityIds && pl[partTag] != null) partEntityIds[pl[partTag]].push(o.id);
   }
   for (const t of texts) {
     const o = GeoMemory.addText(t.x*S, t.y*S, t.text, (t.height||5)*S, t.layer || 'Layer_0');
@@ -11961,8 +12254,11 @@ function commitDxfImport() {
               ' had differing end elevations \u00b7 flattened to the start plane');
   }
 
-  let ncPartsCreated = 0, ncArcsFlattened = 0;
-  if (partEntityIds) {
+  let ncPartsCreated = 0, ncArcsFlattened = 0, camPartsCreated = 0;
+  if (partEntityIds && source === 'cam') {
+    camPartsCreated = camCommitPart(parsed, partEntityIds[0] || [], camFields);
+  }
+  if (partEntityIds && source === 'nc1') {
     parsed.ncParts.forEach((p, pi) => {
       const ids = partEntityIds[pi];
       ncArcsFlattened += p.arcsFlattened || 0;
@@ -12010,7 +12306,10 @@ function commitDxfImport() {
   render();
 
   let msg;
-  if (source === 'nc1') {
+  if (source === 'cam') {
+    msg = `Imported ${lines.length+circles.length+arcs.length} entities \u00b7 ${camPartsCreated} part${camPartsCreated===1?'':'s'}`
+        + ` \u00b7 mm (FastCAM) \u00b7 ${mergeSel}`;
+  } else if (source === 'nc1') {
     msg = `Imported ${lines.length+circles.length} entities \u00b7 ${ncPartsCreated} part${ncPartsCreated===1?'':'s'}`
         + (ncArcsFlattened ? ` \u00b7 ${ncArcsFlattened} arc${ncArcsFlattened===1?'':'s'} flattened` : '')
         + ` \u00b7 ${mergeSel}`;
@@ -12284,6 +12583,569 @@ function importNC1(event) {
   };
   reader.onerror = () => { showToast('Could not read file'); event.target.value=''; };
   reader.readAsText(file);
+}
+
+// ── FASTCAM .CAM IMPORT ─────────────────────────────────────────────────────
+// A FastCAM save file ("VERSION 4.0 FASTCAM SAVE FILE.") is line-oriented
+// text, so like NC1 this is pure JS inside KAD.html: no side module, no WASM,
+// no network. Mapping verified against a real part (HP-1 REV 3) whose AutoCAD
+// DXF was available: every coordinate equals the DXF value x 25.4 to within
+// 4e-12 mm, in the same entity order.
+//
+// ENTITIES holds one record per line, 35 comma-separated fields, with the SAME
+// slots for every entity type:
+//    0 type   1-2 P1   3-4 P2   5-6 P3   7 "text"   8-12 flags   13 "layer"
+//   14-23 zeros   24-32 per-file constant   33-34 zeros
+//   type 1  LINE   P1 start, P2 end
+//   type 2  ARC    P1 start, P2 end, P3 centre; sweeps counter-clockwise
+//                  P1 -> P2. P1 == P2 is a full CIRCLE (P1 = pierce point).
+//   type 3  TEXT   P1 baseline-left, slot 6 height, slot 7 the string
+// Coordinates are millimetres. Quoted strings follow RFC 4180 ("" is a ").
+
+const CAM_SIGNATURE      = /^\s*VERSION\s+([0-9.]+)\s+FASTCAM\s+SAVE\s+FILE/i;
+const CAM_SECTIONS       = ['TOOLS', 'SCALE & CENTRE', 'ENTITIES', 'PATHS',
+                            'KERF AND OPERATION', 'BLOCKS', 'NOTES', 'EOF'];
+const CAM_SECTION_RE     = /^[A-Z][A-Z &]*[A-Z]$/;   // shape of an unknown keyword
+const CAM_VERIFIED_VER   = '4.0';
+const CAM_CIRCLE_EPS     = 1e-6;   // mm: start == end means a full circle
+const CAM_JOIN_EPS       = 1e-3;   // mm: same join tolerance as bomTraceLoop()
+const CAM_ZERO_SLOTS     = [8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 33, 34];
+const CAM_ZERO_BY_TYPE   = { 1: [5, 6], 2: [], 3: [3, 4, 5] };   // unused P slots per type
+const CAM_ANNOTATION_LAYER = /^(DIMS?|DIMENSIONS?|ANNO\w*|NOTES?|TEXT|TITLE)$/i;
+
+// FastCAM writes the Windows ANSI code page, so the degree sign is the single
+// byte 0xB0. Decoding that as UTF-8 (what FileReader.readAsText does) turns it
+// into U+FFFD and the character is gone for good. Try strict UTF-8 first, so
+// a file some other tool re-saved as UTF-8 still reads correctly, then fall
+// back to windows-1252.
+function camDecode(buf) {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let text, encoding;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    encoding = 'utf-8';
+  } catch (_) {
+    text = new TextDecoder('windows-1252').decode(bytes);
+    encoding = 'windows-1252';
+  }
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  // U+FFFD surviving a strict decode means the byte was destroyed BEFORE the
+  // file reached KAD (an upload or editor that re-encoded it). Say so.
+  const lostChars = (text.match(/\ufffd/g) || []).length;
+  return { text, encoding, lostChars };
+}
+
+// RFC 4180 field split: a comma inside quotes is data, and "" inside quotes is
+// one literal quote — the inch mark in ' 3/16" PLATE' is stored as "" .
+// Fields are returned untrimmed: FastCAM keeps leading/trailing spaces in text.
+function camSplitRow(line) {
+  const out = [];
+  let cur = '', q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else q = false;
+      } else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function _camNum(s) {
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function _camDeg(y, x) {
+  return ((Math.atan2(y, x) * 180 / Math.PI) % 360 + 360) % 360;
+}
+
+function parseCAM(text) {
+  const rows = String(text).split(/\r\n|\r|\n/);
+  let first = 0;
+  while (first < rows.length && rows[first].trim() === '') first++;
+  const sig = CAM_SIGNATURE.exec(rows[first] || '');
+  if (!sig) {
+    const head = rows.slice(first, first + 10).join('\n');
+    return { error: /^\s*(%|O\d|N\d+|G\d)/m.test(head)
+      ? 'This looks like an NC / G-code program, not a FastCAM drawing (.CAM) file.'
+      : 'Not a FastCAM save file \u2014 expected "VERSION \u2026 FASTCAM SAVE FILE." on the first line. (.cam is used by other programs too.)' };
+  }
+  const version = sig[1];
+
+  // A section starts at a bare keyword line. Data rows begin with a digit, a
+  // sign, a quote or a space (the TOOLS row), so they never look like one. An
+  // unknown upper-case keyword is accepted as a new section (a later FastCAM
+  // may add one) — except inside NOTES, whose free text could be all capitals.
+  const sections = new Map([['_HEADER', []]]);
+  const order = [];
+  let cur = '_HEADER';
+  for (let i = first + 1; i < rows.length; i++) {
+    const ln = rows[i];
+    const isKw = CAM_SECTIONS.indexOf(ln.trim()) >= 0 && ln === ln.trim();
+    if (isKw || (cur !== 'NOTES' && CAM_SECTION_RE.test(ln))) {
+      cur = ln.trim();
+      if (!sections.has(cur)) { sections.set(cur, []); order.push(cur); }
+      continue;
+    }
+    if (ln.trim() !== '') sections.get(cur).push(ln);
+  }
+  if (!sections.has('ENTITIES')) return { error: 'FastCAM file has no ENTITIES section.' };
+
+  // Header row: "name","","material",thickness_mm,...  Only the verified slots
+  // get a meaning; the whole row rides along as passthrough.
+  const meta = camSplitRow(sections.get('_HEADER')[0] || '');
+  const thick = _camNum(meta[3]);
+
+  const sc = (sections.get('SCALE & CENTRE') || [])[0];
+  const scv = sc ? sc.split(',').map(_camNum) : [];
+  const view = (scv.length >= 3 && scv.slice(0, 3).every(Number.isFinite))
+    ? { scale: scv[0], cx: scv[1], cy: scv[2] } : null;
+
+  const lines = [], circles = [], arcs = [], texts = [];
+  const unknownRaw = [], malformedRaw = [];
+  let flaggedRows = 0, radiusMismatch = 0;
+
+  for (const row of sections.get('ENTITIES')) {
+    const f = camSplitRow(row);
+    const type = parseInt(f[0], 10);
+    const layer = (f[13] != null && f[13] !== '') ? f[13] : '0';
+    // Slots that were zero on every verified record. A non-zero value means a
+    // record feature nobody has checked against a reference drawing yet.
+    const zero = CAM_ZERO_SLOTS.concat(CAM_ZERO_BY_TYPE[type] || []);
+    if (zero.some(k => f[k] != null && f[k].trim() !== '' && _camNum(f[k]) !== 0)) flaggedRows++;
+
+    if (type === 1) {
+      const x1 = _camNum(f[1]), y1 = _camNum(f[2]), x2 = _camNum(f[3]), y2 = _camNum(f[4]);
+      if (![x1, y1, x2, y2].every(Number.isFinite)) { malformedRaw.push(row); continue; }
+      lines.push({ type:'LINE', layer, x1, y1, x2, y2 });
+    } else if (type === 2) {
+      const x1 = _camNum(f[1]), y1 = _camNum(f[2]), x2 = _camNum(f[3]), y2 = _camNum(f[4]);
+      const cx = _camNum(f[5]), cy = _camNum(f[6]);
+      if (![x1, y1, x2, y2, cx, cy].every(Number.isFinite)) { malformedRaw.push(row); continue; }
+      const r1 = Math.hypot(x1 - cx, y1 - cy), r2 = Math.hypot(x2 - cx, y2 - cy);
+      if (!(r1 > 0)) { malformedRaw.push(row); continue; }
+      if (Math.hypot(x2 - x1, y2 - y1) <= CAM_CIRCLE_EPS) {
+        // Start == end is a pierced hole, not a zero-length arc. An ARC with
+        // equal angles draws nothing — the hole would silently vanish.
+        circles.push({ type:'CIRCLE', layer, cx, cy, r: r1 });
+      } else {
+        if (Math.abs(r1 - r2) > 1e-6 * Math.max(1, r1)) radiusMismatch++;
+        arcs.push({ type:'ARC', layer, cx, cy, r: (r1 + r2) / 2,
+                    startA: _camDeg(y1 - cy, x1 - cx), endA: _camDeg(y2 - cy, x2 - cx) });
+      }
+    } else if (type === 3) {
+      const x = _camNum(f[1]), y = _camNum(f[2]), h = _camNum(f[6]);
+      const s = f[7] != null ? f[7] : '';
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { malformedRaw.push(row); continue; }
+      if (s !== '') texts.push({ type:'TEXT', layer, x, y, height: h > 0 ? h : 5, text: s,
+                                 rotation: 0, halign: 0 });
+    } else {
+      unknownRaw.push(row);
+    }
+  }
+
+  const prof = camProfiles(lines, arcs, circles);
+  for (const i of prof.part.lines)   lines[i]._camPart   = 0;
+  for (const i of prof.part.arcs)    arcs[i]._camPart    = 0;
+  for (const i of prof.part.circles) circles[i]._camPart = 0;
+
+  const extents = camExtents(lines, arcs, circles, texts, false);
+  const fcExt   = camExtents(lines, arcs, circles, texts, true);
+  let viewCheck = 'absent', viewDelta = null;
+  if (view && fcExt) {
+    const dx = (fcExt.x0 + fcExt.x1) / 2 - view.cx, dy = (fcExt.y0 + fcExt.y1) / 2 - view.cy;
+    viewDelta = Math.hypot(dx, dy);
+    viewCheck = viewDelta < 0.01 ? 'match' : 'differs';
+  }
+
+  const known = new Set(['TOOLS', 'SCALE & CENTRE', 'ENTITIES', 'PATHS',
+                         'KERF AND OPERATION', 'BLOCKS', 'NOTES', 'EOF']);
+  const camPart = {
+    name:        (meta[0] || '').trim(),
+    materialRaw: (meta[2] || '').trim(),
+    thicknessMM: (thick > 0 && thick < 1000) ? thick : null,
+    version,
+    headerRaw:   meta,
+    toolsRaw:    (sections.get('TOOLS') || []).slice(),
+    view,
+    pathsRaw:    (sections.get('PATHS') || []).slice(),
+    kerfRaw:     (sections.get('KERF AND OPERATION') || []).slice(),
+    blocksRaw:   (sections.get('BLOCKS') || []).slice(),
+    notesRaw:    (sections.get('NOTES') || []).slice(),
+    unknownRaw:  unknownRaw.slice(),
+    otherSectionsRaw: order.filter(s => !known.has(s))
+                           .map(s => ({ section: s, rows: sections.get(s).slice() })),
+  };
+
+  return {
+    lines, circles, arcs, texts,
+    polys: [], points: [], dims: [], hatches: [], beziers: [],
+    rawInsUnits: 4,                 // FastCAM coordinates are millimetres
+    scaleMM: 1,
+    skipped: unknownRaw.length + malformedRaw.length,
+    camParts: prof.part.found ? [camPart] : [],
+    camPart,
+    camReport: {
+      version, versionVerified: version === CAM_VERIFIED_VER,
+      counts: { lines: lines.length, arcs: arcs.length, circles: circles.length,
+                texts: texts.length, unknown: unknownRaw.length, malformed: malformedRaw.length },
+      flaggedRows, radiusMismatch,
+      sections: order.slice(),
+      profile: prof.report,
+      extents, viewCheck, viewDelta,
+    },
+  };
+}
+
+// Groups LINE/ARC ends into closed loops so the importer can tell the part
+// outline from everything else a "FULL" drawing carries (side views, notes).
+// The part = the largest closed outline (a loop or a circle) plus every circle
+// and closed loop inside it. Text never joins the part: bomPartAreaMM2()
+// refuses to weigh a part that contains TEXT.
+function camProfiles(lines, arcs, circles) {
+  const EPS = CAM_JOIN_EPS;
+  const segs = [];
+  lines.forEach((o, i) => {
+    if (Math.hypot(o.x2 - o.x1, o.y2 - o.y1) <= EPS) return;          // zero-length
+    segs.push({ kind:'L', i, o, a:{ x:o.x1, y:o.y1 }, b:{ x:o.x2, y:o.y2 } });
+  });
+  arcs.forEach((o, i) => {
+    const s = o.startA * Math.PI / 180, e = o.endA * Math.PI / 180;
+    segs.push({ kind:'A', i, o,
+                a:{ x:o.cx + o.r * Math.cos(s), y:o.cy + o.r * Math.sin(s) },
+                b:{ x:o.cx + o.r * Math.cos(e), y:o.cy + o.r * Math.sin(e) } });
+  });
+
+  // Endpoint nodes through a spatial hash, so near-coincident ends share one.
+  const nodes = [], grid = new Map();
+  const nodeFor = (p) => {
+    const gx = Math.round(p.x / EPS), gy = Math.round(p.y / EPS);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const list = grid.get((gx + dx) + ',' + (gy + dy));
+      if (list) for (const n of list)
+        if (Math.hypot(nodes[n].x - p.x, nodes[n].y - p.y) <= EPS) return n;
+    }
+    const id = nodes.length;
+    nodes.push({ x:p.x, y:p.y, segs:[] });
+    const k = gx + ',' + gy;
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(id);
+    return id;
+  };
+  for (const s of segs) {
+    s.na = nodeFor(s.a); s.nb = nodeFor(s.b);
+    nodes[s.na].segs.push(s); nodes[s.nb].segs.push(s);
+  }
+
+  // Connected components; a component is a closed loop only if every node in
+  // it joins exactly two segment ends.
+  const parent = nodes.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  for (const s of segs) { const a = find(s.na), b = find(s.nb); if (a !== b) parent[a] = b; }
+  const comps = new Map();
+  for (const s of segs) {
+    const r = find(s.na);
+    if (!comps.has(r)) comps.set(r, []);
+    comps.get(r).push(s);
+  }
+
+  const loops = [];
+  let openChains = 0, openEnds = 0, branchNodes = 0;
+  for (const cs of comps.values()) {
+    const ns = new Set();
+    for (const s of cs) { ns.add(s.na); ns.add(s.nb); }
+    let closed = true;
+    for (const n of ns) {
+      const d = nodes[n].segs.length;
+      if (d !== 2) { closed = false; if (d === 1) openEnds++; else branchNodes++; }
+    }
+    if (!closed) { openChains++; continue; }
+    // Walk the cycle once, tessellating arcs every <= 5 degrees.
+    const poly = [];
+    let s = cs[0], node = s.na;
+    for (let k = 0; k < cs.length; k++) {
+      const fwd = (s.na === node);
+      _camSegPoints(s, fwd, poly);
+      node = fwd ? s.nb : s.na;
+      s = nodes[node].segs[0] === s ? nodes[node].segs[1] : nodes[node].segs[0];
+    }
+    loops.push({ kind:'loop', segs: cs, poly, area: Math.abs(_camShoelace(poly)) });
+  }
+
+  const cands = loops.concat(circles.map((c, i) => ({ kind:'circle', i, c, area: Math.PI * c.r * c.r })));
+  cands.sort((a, b) => b.area - a.area);
+  const outline = cands[0] || null;
+  const part = { found: !!outline, lines: [], arcs: [], circles: [] };
+  const report = { outline: null, holes: 0, innerLoops: 0, otherClosed: 0, otherCircles: 0,
+                   openChains, openEnds, branchNodes, outlineLayers: [], annotationLayerInOutline: [] };
+  if (!outline) return { part, report };
+
+  const insideOutline = (p) => outline.kind === 'circle'
+    ? Math.hypot(p.x - outline.c.cx, p.y - outline.c.cy) < outline.c.r
+    : _camPointInPoly(p, outline.poly);
+
+  const layers = new Set();
+  if (outline.kind === 'loop') {
+    for (const s of outline.segs) { (s.kind === 'L' ? part.lines : part.arcs).push(s.i); layers.add(s.o.layer); }
+  } else {
+    part.circles.push(outline.i); layers.add(outline.c.layer);
+  }
+  for (const L of loops) {
+    if (L === outline) continue;
+    if (outline.area > L.area && insideOutline(L.poly[0])) {
+      for (const s of L.segs) (s.kind === 'L' ? part.lines : part.arcs).push(s.i);
+      report.innerLoops++;
+    } else report.otherClosed++;
+  }
+  circles.forEach((c, i) => {
+    if (outline.kind === 'circle' && i === outline.i) return;
+    if (insideOutline({ x:c.cx, y:c.cy })) { part.circles.push(i); report.holes++; }
+    else report.otherCircles++;
+  });
+
+  report.outline = { kind: outline.kind, segments: outline.kind === 'loop' ? outline.segs.length : 1,
+                     area: outline.area,
+                     bbox: outline.kind === 'loop'
+                       ? camExtents(outline.segs.filter(s => s.kind === 'L').map(s => s.o),
+                                    outline.segs.filter(s => s.kind === 'A').map(s => s.o), [], [], false)
+                       : camExtents([], [], [outline.c], [], false) };
+  report.outlineLayers = [...layers];
+  report.annotationLayerInOutline = report.outlineLayers.filter(l => CAM_ANNOTATION_LAYER.test(l));
+  return { part, report };
+}
+
+function _camSegPoints(s, fwd, out) {
+  if (s.kind === 'L') {
+    const p = fwd ? s.a : s.b, q = fwd ? s.b : s.a;
+    if (!out.length) out.push({ x:p.x, y:p.y });
+    out.push({ x:q.x, y:q.y });
+    return;
+  }
+  const o = s.o;
+  let a0 = o.startA * Math.PI / 180, sweep = o.endA * Math.PI / 180 - a0;
+  if (sweep <= 0) sweep += 2 * Math.PI;
+  const n = Math.max(2, Math.ceil(sweep / (Math.PI / 36)));
+  const pts = [];
+  for (let k = 0; k <= n; k++) {
+    const a = a0 + sweep * k / n;
+    pts.push({ x:o.cx + o.r * Math.cos(a), y:o.cy + o.r * Math.sin(a) });
+  }
+  if (!fwd) pts.reverse();
+  if (!out.length) out.push(pts[0]);
+  for (let k = 1; k < pts.length; k++) out.push(pts[k]);
+}
+
+function _camShoelace(p) {
+  let s = 0;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length];
+    s += a.x * b.y - b.x * a.y;
+  }
+  return s / 2;
+}
+
+function _camPointInPoly(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    if (((yi > pt.y) !== (yj > pt.y)) && (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+// True extents, or FastCAM's own extents rule (fastcamRule): text counts as
+// chars x height wide from its insertion point. The latter reproduces the
+// centre FastCAM saves in SCALE & CENTRE, which is a free parse check.
+function camExtents(lines, arcs, circles, texts, fastcamRule) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const add = (x, y) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; };
+  for (const o of lines) { add(o.x1, o.y1); add(o.x2, o.y2); }
+  for (const o of circles) { add(o.cx - o.r, o.cy - o.r); add(o.cx + o.r, o.cy + o.r); }
+  for (const o of arcs) {
+    const s = o.startA, e = o.endA;
+    const inSweep = (a) => { const t = ((a - s) % 360 + 360) % 360, w = ((e - s) % 360 + 360) % 360 || 360; return t <= w; };
+    add(o.cx + o.r * Math.cos(s * Math.PI / 180), o.cy + o.r * Math.sin(s * Math.PI / 180));
+    add(o.cx + o.r * Math.cos(e * Math.PI / 180), o.cy + o.r * Math.sin(e * Math.PI / 180));
+    for (const a of [0, 90, 180, 270]) if (inSweep(a)) add(o.cx + o.r * Math.cos(a * Math.PI / 180), o.cy + o.r * Math.sin(a * Math.PI / 180));
+  }
+  if (fastcamRule) for (const t of texts) { add(t.x, t.y); add(t.x + t.text.length * t.height, t.y); }
+  return x0 === Infinity ? null : { x0, y0, x1, y1 };
+}
+
+// FastCAM material names are free text from the shop's own library
+// ("MILD STEEL PLATE A36"). Only an explicit spec token earns a suggestion; a
+// family word alone ("STAINLESS") only drives the warning. Same rule as NC1:
+// suggested, confirmed, never silent.
+const CAM_GRADE_TOKENS = [
+  [/\bA\s*-?\s*572\b[^0-9]{0,8}\b65\b/i, 'a572-65'],
+  [/\bA\s*-?\s*572\b/i,                 'a572-50'],
+  [/\bA\s*-?\s*588\b/i,                 'a588'],
+  [/\bA\s*-?\s*514\b/i,                 'a514'],
+  [/\bA\s*-?\s*36\b/i,                  'a36'],
+  [/\bA\s*-?\s*653\b/i,                 'a653-33'],
+  [/\bA\s*-?\s*1011\b[^0-9]{0,12}\b65\b/i, 'a1011-ss65'],
+  [/\bA\s*-?\s*1011\b[^0-9]{0,12}\b50\b/i, 'a1011-ss50'],
+  [/\bA\s*-?\s*1011\b[^0-9]{0,12}\b36\b/i, 'a1011-ss36'],
+  [/\bA\s*-?\s*1011\b/i,                'a1011-csb'],
+  [/\b304L?\b/i, 'ss304'], [/\b316L?\b/i, 'ss316'], [/\b409\b/i, 'ss409'], [/\b430\b/i, 'ss430'],
+  [/\b5052\b[^0-9]{0,4}H\s*34\b/i, 'al5052h34'], [/\b5052\b/i, 'al5052h32'],
+  [/\b3003\b/i, 'al3003'], [/\b6061\b/i, 'al6061'], [/\b7075\b/i, 'al7075'],
+];
+
+function camSuggestGrade(materialRaw) {
+  const s = String(materialRaw || '');
+  const family = /STAINLESS|\bS\.?S\.?\b|\bSST\b/i.test(s) ? 'Stainless Steel'
+               : /ALUM|\bAL\b/i.test(s) ? 'Aluminum'
+               : /STEEL|\bMS\b|CARBON|\bHR\b|\bCR\b|\bHRPO\b/i.test(s) ? 'Carbon Steel' : null;
+  for (const [re, id] of CAM_GRADE_TOKENS) {
+    if (!re.test(s)) continue;
+    const m = kadMaterialById(id);
+    if (!m) continue;
+    // A spec token that contradicts the family word is not a match.
+    if (family && m.group.indexOf(family) !== 0) continue;
+    return { id, token: (s.match(re) || [''])[0].trim(), family };
+  }
+  return family ? { id: null, family } : null;
+}
+
+// ── UI glue ────────────────────────────────────────────────────────────────
+
+function importCAM(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    let parsed;
+    try {
+      const dec = camDecode(e.target.result);
+      parsed = parseCAM(dec.text);
+      if (!parsed.error) {
+        parsed.camReport.encoding  = dec.encoding;
+        parsed.camReport.lostChars = dec.lostChars;
+        parsed.camPart.sourceFile  = file.name;
+        if (!parsed.camPart.name) parsed.camPart.name = file.name.replace(/\.cam$/i, '');
+      }
+    } catch (err) { showToast('CAM parse error: ' + err.message); event.target.value = ''; return; }
+    if (parsed.error) { showToast('CAM error: ' + parsed.error); event.target.value = ''; return; }
+    if (!openImportDialog(parsed, file.name, 'cam')) event.target.value = '';
+  };
+  reader.onerror = () => { showToast('Could not read file'); event.target.value = ''; };
+  reader.readAsArrayBuffer(file);     // NOT readAsText — see camDecode()
+}
+
+// Fills the CAM section of the shared import dialog.
+function camFillDialog(parsed) {
+  const p = parsed.camPart, rep = parsed.camReport, pr = rep.profile;
+  const insEl = document.getElementById('dlg-insunits');
+  insEl.textContent = 'Millimetres (FastCAM stores mm)';
+  insEl.className = 'ok';
+
+  document.getElementById('dlg-cam-name').value  = p.name;
+  document.getElementById('dlg-cam-qty').value   = 1;
+  document.getElementById('dlg-cam-thick').value = p.thicknessMM != null ? p.thicknessMM : '';
+  document.getElementById('dlg-cam-material-raw').textContent = p.materialRaw || '(none in file)';
+
+  const prEl = document.getElementById('dlg-cam-profile');
+  if (!pr.outline) {
+    prEl.textContent = 'No closed outline \u2014 geometry imports, no part is created';
+    prEl.className = 'warn';
+  } else {
+    const bits = [pr.outline.kind === 'circle' ? 'round outline' : pr.outline.segments + '-segment outline'];
+    if (pr.holes)      bits.push(pr.holes + ' hole' + (pr.holes > 1 ? 's' : ''));
+    if (pr.innerLoops) bits.push(pr.innerLoops + ' cut-out' + (pr.innerLoops > 1 ? 's' : ''));
+    prEl.textContent = bits.join(' + ');
+    prEl.className = 'ok';
+  }
+
+  // Size in both units: the one readout that exposes a 25.4x unit error at a
+  // glance. The part outline when there is one, else the whole drawing.
+  const e = pr.outline ? pr.outline.bbox : rep.extents, sizeEl = document.getElementById('dlg-cam-size');
+  if (e) {
+    const w = e.x1 - e.x0, h = e.y1 - e.y0;
+    sizeEl.textContent = w.toFixed(1) + ' \u00d7 ' + h.toFixed(1) + ' mm  (' +
+                         (w / 25.4).toFixed(2) + ' \u00d7 ' + (h / 25.4).toFixed(2) + ' in)' +
+                         (pr.outline ? '' : ' \u00b7 whole drawing');
+  } else sizeEl.textContent = '\u2014';
+
+  const notes = [];
+  if (rep.lostChars) notes.push(rep.lostChars + ' character' + (rep.lostChars > 1 ? 's were' : ' was') +
+    ' lost before this file reached KAD (shown as \ufffd) \u2014 re-export from FastCAM');
+  if (!rep.versionVerified) notes.push('FastCAM file version ' + rep.version +
+    ' \u2014 only ' + CAM_VERIFIED_VER + ' has been verified; check the result');
+  if (rep.flaggedRows) notes.push(rep.flaggedRows + ' record' + (rep.flaggedRows > 1 ? 's carry' : ' carries') +
+    ' unverified flags (arcs assumed counter-clockwise)');
+  if (pr.annotationLayerInOutline.length) notes.push('Part outline uses layer ' +
+    pr.annotationLayerInOutline.join(', ') + ' \u2014 hiding it opens the profile');
+  if (pr.otherClosed || pr.otherCircles) notes.push((pr.otherClosed + pr.otherCircles) +
+    ' closed shape' + ((pr.otherClosed + pr.otherCircles) > 1 ? 's' : '') +
+    ' outside the outline (side view?) \u2014 imported, not added to the part');
+  if (pr.openChains) notes.push(pr.openChains + ' open chain' + (pr.openChains > 1 ? 's' : '') +
+    ' (' + pr.openEnds + ' loose end' + (pr.openEnds === 1 ? '' : 's') + ')');
+  if (rep.radiusMismatch) notes.push(rep.radiusMismatch + ' arc' + (rep.radiusMismatch > 1 ? 's have' : ' has') +
+    ' unequal start/end radii');
+  const notesEl = document.getElementById('dlg-cam-notes');
+  notesEl.style.display = notes.length ? 'block' : 'none';
+  notesEl.innerHTML = notes.map(n => '<div>\u25b8 ' + pdEsc(n) + '</div>').join('');
+
+  const sug = camSuggestGrade(p.materialRaw);
+  const note = document.getElementById('dlg-cam-grade-note');
+  if (sug && sug.id) {
+    note.textContent = 'Matched "' + sug.token + '" in the material name: ' + kadGradeLabel(sug.id) + ' \u2014 confirm';
+    note.className = 'ok';
+  } else {
+    note.textContent = (sug && sug.family)
+      ? 'Material reads as ' + sug.family.toLowerCase() + ' but names no grade KAD knows \u2014 pick one below.'
+      : 'No grade found in the material name \u2014 defaulted to mild steel, please confirm.';
+    note.className = 'warn';
+  }
+  renderGradePicker((sug && sug.id) || 'a36', 'cam-grades');
+}
+
+// Read the CAM dialog fields — called before closeDxfDialog(), like NC1's.
+function camReadDialog() {
+  const val = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const tile = document.querySelector('#cam-grades .pd-tile.sel');
+  return { name: val('dlg-cam-name'), qty: val('dlg-cam-qty'), thick: val('dlg-cam-thick'),
+           gradeId: tile ? tile.dataset.gid : null };
+}
+
+// Creates the Part record after the entities are committed. entityIds holds
+// the new GeoMemory ids of everything parseCAM() tagged _camPart.
+function camCommitPart(parsed, entityIds, fields) {
+  if (!parsed.camParts.length || !entityIds.length) return 0;
+  const p = parsed.camPart;
+  fields = fields || {};
+  const sug = camSuggestGrade(p.materialRaw);
+  const gradeId = fields.gradeId || (sug && sug.id) || 'a36';
+  const thick = parseFloat(fields.thick);
+  const { part } = PartLibrary.addPart(fields.name || p.name, entityIds, {
+    gradeId,
+    thicknessMM: thick > 0 ? thick : (p.thicknessMM != null ? p.thicknessMM : 6.35),
+    qty: parseInt(fields.qty, 10) || 1,
+  });
+  if (!part) return 0;
+  Object.assign(part, {
+    camMaterialRaw: p.materialRaw,
+    camVersion:     p.version,
+    camHeaderRaw:   p.headerRaw,
+    camToolsRaw:    p.toolsRaw,
+    camView:        p.view,
+    camPathsRaw:    p.pathsRaw,
+    camKerfRaw:     p.kerfRaw,
+    camBlocksRaw:   p.blocksRaw,
+    camNotesRaw:    p.notesRaw,
+    camUnknownRaw:  p.unknownRaw,
+    camOtherSectionsRaw: p.otherSectionsRaw,
+    camSourceFile:  p.sourceFile || '',
+  });
+  updatePartsPanel();
+  return 1;
 }
 
 const PDFJS_VERSION = '3.11.174';
@@ -14294,6 +15156,14 @@ function kadMaterialById(id) {
 function kadGradeLabel(id) {
   const m = kadMaterialById(id);
   return m ? m.spec : (id ? id + ' (unknown)' : '—');
+}
+
+// Ids restart at 1 after GeoMemory.clear(), so a Part that outlived the clear
+// would claim whatever is drawn or imported next — wrong name, grade and qty on
+// new geometry, and a BOM row for a part that no longer exists.
+function kadPruneParts() {
+  try { PartLibrary.prune(); } catch (e) { return; }   // not initialised yet during boot
+  if (typeof updatePartsPanel === 'function') updatePartsPanel();
 }
 
 const PART_COLORS = [
@@ -22695,6 +23565,12 @@ if ('launchQueue' in window) {
         dt.items.add(file);
         input.files = dt.files;
         input.dispatchEvent(new Event('change'));
+      } else if (/\.cam$/i.test(file.name)) {
+        const input = document.getElementById('load-cam');
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change'));
       } else if (/\.(nc1|dstv)$/i.test(file.name)) {
         const input = document.getElementById('load-nc1');
         const dt = new DataTransfer();
@@ -24028,19 +24904,25 @@ function aiResolveRunKommand(toolUseId, accepted, script) {
 // SKAD_AI.transcript holds full Anthropic-format turns, including raw tool_use
 // content blocks on assistant turns, so tool_result blocks on the following
 // user turn can reference them by id exactly as the API requires.
-async function aiCallAPI() {
-  const endpoint = SKAD_AI.endpoint || AI_DEFAULT_ENDPOINT;
-  const direct   = !SKAD_AI.endpoint;
+// Shared by aiCallAPI and the sketch importer so both honour the same key,
+// endpoint and proxy setting. Direct browser calls need the Anthropic headers;
+// a custom endpoint is assumed to be a proxy holding its own credentials.
+function aiAuthHeaders() {
   const headers = { 'content-type': 'application/json' };
-  if (direct) {
+  if (!SKAD_AI.endpoint) {
     headers['x-api-key'] = SKAD_AI.key;
     headers['anthropic-version'] = '2023-06-01';
     headers['anthropic-dangerous-direct-browser-access'] = 'true';
   } else {
     headers['authorization'] = 'Bearer ' + SKAD_AI.key;
   }
+  return headers;
+}
+
+async function aiCallAPI() {
+  const endpoint = SKAD_AI.endpoint || AI_DEFAULT_ENDPOINT;
   const res = await fetch(endpoint, {
-    method: 'POST', headers: headers,
+    method: 'POST', headers: aiAuthHeaders(),
     body: JSON.stringify({
       model: SKAD_AI.model, max_tokens: 4096,
       system: aiSystemPrompt(),
@@ -24240,6 +25122,908 @@ window.addEventListener('load', function aiInit() {
 
   aiAppendBubble('system', 'AI is ready. It draws with SKAD (OpenSCAD), reads the drawing with query/measure, and can look at the canvas to check its own work.');
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DIMENSIONED-IMAGE / SKETCH IMPORT                             SKAD only
+   ──────────────────────────────────────────────────────────────────────────
+   Implements SKAD-DIMENSIONED-IMAGE-IMPORT-SPEC.md.
+
+   This is NOT the PDF importer. The PDF importer traces vector operators 1:1
+   at native scale — the coordinates are already exact. Here the input is a
+   raster (a scanned page or a photo of a hand sketch) with no scale in it at
+   all. Pixel lengths in a hand sketch are close to meaningless: a line
+   labelled 20 may be drawn longer than one labelled 50. So the pixels are
+   only ever used for TOPOLOGY (what connects to what, roughly where), and
+   every length that matters comes from the dimension callouts, solved for.
+
+   Pipeline, per the spec:
+     1  ingest   — raster the PDF page, or downscale/enhance the photo
+     2  vision   — one-shot Claude call, forced JSON, reads entities + dims
+     3  solve    — Tier A+ relaxation: scale seed, axis snap, then relax
+     4  review   — MANDATORY. Overlay on the original, fix misreads, re-solve
+     5  commit   — only then does anything reach GeoMemory
+
+   Stage 4 is not a formality. Stage 2 misreads handwriting, and a 5 read as
+   a 6 is silent and produces a confidently wrong part. Nothing auto-commits.
+
+   Tier B (a real geometric constraint solver — tangency, symmetry, over/
+   under-constraint detection) is deliberately NOT here. See the spec.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let SKI = null;   // active import session, null when the dialog is closed
+
+const SKI_MAX_EDGE   = 1568;  // Anthropic vision sweet spot; bigger just costs
+const SKI_LAYER      = 'SKETCH_AI';
+const SKI_LAYER_DIM  = 'SKETCH_AI_DIM';
+
+// ── ingest ──────────────────────────────────────────────────────────────────
+
+function openSketchImport() {
+  const el = document.getElementById('sketch-file');
+  if (el) el.click();
+}
+function onSketchFile(e) {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (f) skiBegin(f);
+}
+
+async function skiBegin(file) {
+  showToast('Reading ' + file.name + '\u2026');
+  const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+  let raster;
+  try {
+    raster = isPdf ? await skiRasterPdf(file) : await skiRasterImage(file);
+  } catch (err) {
+    showToast(err && err.message === 'offline'
+      ? 'PDF support needs to download once \u00b7 check your connection'
+      : 'Could not read that file');
+    return;
+  }
+  SKI = {
+    name: file.name, source: isPdf ? 'pdf' : 'image',
+    raw: raster,            // { canvas, w, h }
+    dataUrl: null, media: null,
+    plan: null, solved: null, busy: false,
+  };
+  skiShowDialog();
+}
+
+// Scanned PDFs have no usable vector content, so this deliberately renders the
+// page instead of calling getOperatorList(). Page 1 only — a dimensioned sketch
+// is one drawing; multi-page batching is not worth the review burden.
+async function skiRasterPdf(file) {
+  const lib = await loadPdfJs();
+  const buf = await file.arrayBuffer();
+  const doc = await lib.getDocument({
+    data: new Uint8Array(buf),
+    disableFontFace: true, useSystemFonts: false, isEvalSupported: false,
+  }).promise;
+  const page = await doc.getPage(1);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(4, SKI_MAX_EDGE / Math.max(base.width, base.height));
+  const vp = page.getViewport({ scale: scale });
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  try { doc.destroy(); } catch (err) {}
+  return { canvas: cv, w: cv.width, h: cv.height, photo: false };
+}
+
+async function skiRasterImage(file) {
+  const url = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('read failed'));
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error('not an image'));
+    i.src = url;
+  });
+  const s = Math.min(1, SKI_MAX_EDGE / Math.max(img.width, img.height));
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(img.width * s));
+  cv.height = Math.max(1, Math.round(img.height * s));
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  return { canvas: cv, w: cv.width, h: cv.height, photo: /jpe?g|webp|heic/i.test(file.type + file.name) };
+}
+
+// Grey + percentile contrast stretch. Phone photos of pencil sketches are
+// low-contrast and unevenly lit, and the vision step reads them much better
+// flattened. No deskew — real deskew wants a Hough pass, which is v2 per spec.
+function skiEnhance(src) {
+  const cv = document.createElement('canvas');
+  cv.width = src.width; cv.height = src.height;
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(src, 0, 0);
+  const im = ctx.getImageData(0, 0, cv.width, cv.height);
+  const d = im.data, hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) {
+    const g = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+    d[i] = d[i + 1] = d[i + 2] = g;
+    hist[g]++;
+  }
+  const total = d.length / 4;
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > total * 0.02) { lo = v; break; } }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > total * 0.02) { hi = v; break; } }
+  if (hi - lo < 8) return cv;
+  const span = hi - lo;
+  for (let i = 0; i < d.length; i += 4) {
+    let g = (d[i] - lo) * 255 / span;
+    g = g < 0 ? 0 : g > 255 ? 255 : g;
+    d[i] = d[i + 1] = d[i + 2] = g;
+  }
+  ctx.putImageData(im, 0, 0);
+  return cv;
+}
+
+// ── dialog ──────────────────────────────────────────────────────────────────
+
+function skiShowDialog() {
+  const ov = document.getElementById('sketch-import-overlay');
+  if (!ov || !SKI) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('ski-file', SKI.name);
+  set('ski-src', SKI.source === 'pdf' ? 'PDF page 1 (rasterised)' : 'Image');
+  set('ski-size', SKI.raw.w + ' \u00d7 ' + SKI.raw.h + ' px');
+  skiPick('unit', 'auto');
+  skiPick('prep', SKI.raw.photo ? 'enhance' : 'raw');
+  skiPick('place', GeoMemory.objects.length === 0 ? 'replace' : 'merge');
+  skiStatus(SKAD_AI && SKAD_AI.key ? '' : 'No AI key set \u2014 open the AI dock settings first.',
+            SKAD_AI && SKAD_AI.key ? null : 'var(--red)');
+  const prev = document.getElementById('ski-thumb');
+  if (prev) { prev.innerHTML = ''; prev.appendChild(skiThumb(SKI.raw.canvas, 300)); }
+  ov.classList.add('open');
+}
+function closeSketchImport() {
+  const ov = document.getElementById('sketch-import-overlay');
+  if (ov) ov.classList.remove('open');
+  SKI = null;
+}
+function skiPick(group, value) {
+  const cards = document.querySelectorAll('[data-ski-group="' + group + '"]');
+  for (const c of cards) c.classList.toggle('selected', c.dataset.skiValue === value);
+}
+function skiPicked(group, fallback) {
+  const el = document.querySelector('[data-ski-group="' + group + '"].selected');
+  return el ? el.dataset.skiValue : fallback;
+}
+function skiStatus(msg, color) {
+  const el = document.getElementById('ski-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = color || 'var(--t3)';
+}
+function skiThumb(canvas, maxW) {
+  const c = document.createElement('canvas');
+  const s = Math.min(1, maxW / canvas.width);
+  c.width = Math.round(canvas.width * s);
+  c.height = Math.round(canvas.height * s);
+  c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+  c.style.width = '100%'; c.style.height = 'auto'; c.style.display = 'block';
+  return c;
+}
+
+// ── vision ──────────────────────────────────────────────────────────────────
+
+const SKI_SYSTEM =
+  'You read engineering drawings and hand sketches and return their geometry and ' +
+  'dimension callouts as JSON. You never scale anything yourself and you never ' +
+  'infer a dimension that is not written on the drawing.\n\n' +
+  'Reply with ONE raw JSON object and nothing else — no prose, no markdown fences.\n\n' +
+  'Schema:\n' +
+  '{\n' +
+  '  "units": "mm" | "in",            // the drawing\'s stated or implied units\n' +
+  '  "confidence": "high"|"medium"|"low",\n' +
+  '  "points":   [ {"id":"p1","xy":[px,py]} ],       // IMAGE pixels, origin TOP-LEFT\n' +
+  '  "entities": [ {"id":"e1","type":"line","p1":"p1","p2":"p2"},\n' +
+  '                {"id":"e2","type":"circle","c":"p5","r_px":30},\n' +
+  '                {"id":"e3","type":"arc","c":"p6","p1":"p7","p2":"p8"} ],\n' +
+  '  "dimensions": [\n' +
+  '    {"id":"d1","type":"linear","value":120,"unit":"mm","of":["e1"],"axis":"x",\n' +
+  '     "text_as_read":"120","confidence":"high"},\n' +
+  '    {"id":"d2","type":"diameter","value":20,"unit":"mm","of":["e2"]},\n' +
+  '    {"id":"d3","type":"linear","value":40,"unit":"mm","from":"p1","to":"p5","axis":"x"},\n' +
+  '    {"id":"d4","type":"angular","value":30,"unit":"deg","of":["e1","e4"]}\n' +
+  '  ],\n' +
+  '  "notes": [ "anything ambiguous, unreadable, or left out" ]\n' +
+  '}\n\n' +
+  'Rules:\n' +
+  '- Pixel coordinates are for TOPOLOGY ONLY (what joins what, roughly where). They ' +
+  'are never treated as scaled lengths, so a sloppy sketch is fine.\n' +
+  '- Share point ids between entities wherever lines meet. Shared ids are what makes ' +
+  'the shape hold together — do not emit two near-identical points for one corner.\n' +
+  '- "type" is one of linear, diameter, radius, angular.\n' +
+  '- linear: use "of":[lineId] when the dimension measures one drawn edge; use ' +
+  '"from"/"to" point ids for an offset or location dimension between features.\n' +
+  '- "axis":"x" or "y" only when the dimension is clearly horizontal or vertical on ' +
+  'the drawing; omit it otherwise.\n' +
+  '- "text_as_read" is the literal characters you saw, before any interpretation. ' +
+  'Mark confidence "low" for anything hand-written and hard to read.\n' +
+  '- Do NOT invent dimensions to make the shape closed or solvable. Missing ' +
+  'dimensions are expected; say so in "notes".\n' +
+  '- Ignore title blocks, borders, notes, hatching and arrowheads as geometry.\n' +
+  '- Drop tolerance suffixes; "value" is the nominal number only.';
+
+// Mirrors aiCallAPI's auth so the sketch importer honours the same key,
+// endpoint and proxy settings as the AI dock.
+function skiVisionPrompt() {
+  const unit = skiPicked('unit', 'auto');
+  let p = 'Read this drawing. Return the JSON object described in the system prompt.';
+  if (unit !== 'auto') p += ' Treat unmarked dimension values as ' + (unit === 'mm' ? 'millimetres' : 'inches') + '.';
+  return p;
+}
+
+async function skiVision(dataUrl, media) {
+  const endpoint = (SKAD_AI.endpoint || AI_DEFAULT_ENDPOINT);
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: aiAuthHeaders(),
+    body: JSON.stringify({
+      model: SKAD_AI.model,
+      max_tokens: 8000,
+      system: SKI_SYSTEM,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: media, data: dataUrl.split(',')[1] } },
+          { type: 'text', text: skiVisionPrompt() },
+        ],
+      }],
+    }),
+  });
+  if (!res.ok) {
+    let detail = res.status + ' ' + res.statusText;
+    try { const eb = await res.json(); if (eb && eb.error && eb.error.message) detail = eb.error.message; } catch (e) {}
+    throw new Error(detail);
+  }
+  const data = await res.json();
+  const text = (Array.isArray(data.content) ? data.content : [])
+    .filter(b => b.type === 'text').map(b => b.text).join('\n');
+  return skiParsePlan(text);
+}
+
+// Models sometimes fence the JSON or add a sentence in front of it despite
+// being told not to, so take the outermost brace span rather than trusting
+// the whole reply to parse.
+function skiParsePlan(text) {
+  let s = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('the model did not return JSON');
+  let plan;
+  try { plan = JSON.parse(s.slice(a, b + 1)); }
+  catch (err) { throw new Error('the model returned malformed JSON'); }
+
+  if (!plan || typeof plan !== 'object') throw new Error('empty result');
+  plan.points     = Array.isArray(plan.points) ? plan.points : [];
+  plan.entities   = Array.isArray(plan.entities) ? plan.entities : [];
+  plan.dimensions = Array.isArray(plan.dimensions) ? plan.dimensions : [];
+  plan.notes      = Array.isArray(plan.notes) ? plan.notes : [];
+  plan.units      = (plan.units === 'in') ? 'in' : 'mm';
+
+  const pmap = Object.create(null);
+  for (const p of plan.points) {
+    if (!p || typeof p.id !== 'string' || !Array.isArray(p.xy)) continue;
+    const x = Number(p.xy[0]), y = Number(p.xy[1]);
+    if (!isFinite(x) || !isFinite(y)) continue;
+    pmap[p.id] = true;
+  }
+  plan.entities = plan.entities.filter(e => {
+    if (!e || typeof e.id !== 'string') return false;
+    if (e.type === 'line')   return pmap[e.p1] && pmap[e.p2];
+    if (e.type === 'circle') return pmap[e.c] && isFinite(Number(e.r_px));
+    if (e.type === 'arc')    return pmap[e.c] && pmap[e.p1] && pmap[e.p2];
+    return false;
+  });
+  const emap = Object.create(null);
+  for (const e of plan.entities) emap[e.id] = e;
+
+  plan.dimensions = plan.dimensions.filter((d, i) => {
+    if (!d || !isFinite(Number(d.value))) return false;
+    d.value = Number(d.value);
+    d.id = typeof d.id === 'string' ? d.id : 'd' + (i + 1);
+    d.type = ['linear', 'diameter', 'radius', 'angular'].includes(d.type) ? d.type : 'linear';
+    d.unit = (d.unit === 'in' || d.unit === 'deg' || d.unit === 'mm') ? d.unit
+           : (d.type === 'angular' ? 'deg' : plan.units);
+    d.of = Array.isArray(d.of) ? d.of.filter(x => emap[x]) : [];
+    if (d.axis !== 'x' && d.axis !== 'y') delete d.axis;
+    d.on = d.on !== false;                       // review checkbox state
+    if (d.type === 'angular')  return d.of.length >= 2;
+    if (d.type !== 'linear')   return d.of.length >= 1;
+    return d.of.length >= 1 || (pmap[d.from] && pmap[d.to]);
+  });
+  return plan;
+}
+
+// ── solver — Tier A+ ────────────────────────────────────────────────────────
+// Not a geometric constraint solver. It is a scale seed followed by weighted
+// Gauss-Seidel relaxation over three constraint kinds: axis alignment, length,
+// and angle between edges. That covers orthogonal and mildly angled sketches,
+// which is the bulk of real dimensioned hand work. It has no notion of
+// tangency or symmetry and does not detect over- or under-constraint — it just
+// reports how far each dimension ended up from its target and lets the review
+// step show you. Tier B replaces this wholesale; nothing else depends on it.
+
+const SKI_ITERS   = 400;
+const SKI_RELAX   = 0.5;    // per-pass correction fraction; <1 prevents ringing
+const SKI_AXIS_TOL = 8;     // degrees from horizontal/vertical to call it axial
+
+function skiSolve(plan) {
+  const mm = (v, unit) => unit === 'in' ? v * MM_PER_IN : v;
+
+  // 1 ── seed. Image y is down, CAD y is up.
+  const P = Object.create(null);
+  const rough = Object.create(null);
+  for (const p of plan.points) {
+    const x = Number(p.xy[0]), y = Number(p.xy[1]);
+    if (!isFinite(x) || !isFinite(y)) continue;
+    P[p.id]     = { x: x, y: -y };
+    rough[p.id] = { x: x, y: y };
+  }
+  const ent = Object.create(null);
+  for (const e of plan.entities) ent[e.id] = e;
+  const dims = plan.dimensions.filter(d => d.on !== false);
+
+  // 2 ── scale. Every dimension that resolves to two points votes on mm-per-px;
+  // the median wins, so one misread value cannot drag the whole drawing.
+  const votes = [];
+  for (const d of dims) {
+    if (d.type === 'angular') continue;
+    const pair = skiDimPoints(d, ent);
+    let px = 0;
+    if (d.type === 'diameter' || d.type === 'radius') {
+      const e = ent[d.of[0]];
+      if (!e) continue;
+      const r = (e.type === 'circle') ? Number(e.r_px)
+              : (P[e.p1] && P[e.c]) ? Math.hypot(P[e.p1].x - P[e.c].x, P[e.p1].y - P[e.c].y) : 0;
+      px = (d.type === 'diameter') ? r * 2 : r;
+    } else if (pair) {
+      const a = P[pair[0]], b = P[pair[1]];
+      if (!a || !b) continue;
+      px = d.axis === 'x' ? Math.abs(b.x - a.x)
+         : d.axis === 'y' ? Math.abs(b.y - a.y)
+         : Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    if (px > 2) votes.push(mm(Math.abs(d.value), d.unit) / px);
+  }
+  votes.sort((a, b) => a - b);
+  const scale = votes.length ? votes[votes.length >> 1] : 0;
+  const scaled = scale > 0;
+  const S = scaled ? scale : (100 / Math.max(1, Math.max(plan._w || 1000, plan._h || 1000)));
+  for (const id in P) { P[id].x *= S; P[id].y *= S; }
+
+  // 3 ── axis snap. A line drawn within a few degrees of square was meant to
+  // be square; freehand wobble is not a design intent.
+  const axial = [];
+  for (const e of plan.entities) {
+    if (e.type !== 'line') continue;
+    const a = P[e.p1], b = P[e.p2];
+    if (!a || !b) continue;
+    const ang = Math.abs(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI) % 180;
+    if (ang < SKI_AXIS_TOL || ang > 180 - SKI_AXIS_TOL) axial.push({ e: e, dir: 'h' });
+    else if (Math.abs(ang - 90) < SKI_AXIS_TOL)          axial.push({ e: e, dir: 'v' });
+  }
+
+  // 4 ── relax
+  const radius = Object.create(null);   // entity id -> solved radius (mm)
+  for (const d of dims) {
+    if (d.type !== 'diameter' && d.type !== 'radius') continue;
+    const v = mm(Math.abs(d.value), d.unit);
+    radius[d.of[0]] = (d.type === 'diameter') ? v / 2 : v;
+  }
+
+  for (let it = 0; it < SKI_ITERS; it++) {
+    for (const ax of axial) {
+      const a = P[ax.e.p1], b = P[ax.e.p2];
+      if (!a || !b) continue;
+      if (ax.dir === 'h') { const m = (a.y + b.y) / 2; a.y += (m - a.y) * SKI_RELAX; b.y += (m - b.y) * SKI_RELAX; }
+      else                { const m = (a.x + b.x) / 2; a.x += (m - a.x) * SKI_RELAX; b.x += (m - b.x) * SKI_RELAX; }
+    }
+    for (const d of dims) {
+      if (d.type === 'angular') { skiRelaxAngle(d, ent, P); continue; }
+      if (d.type !== 'linear') continue;
+      const pair = skiDimPoints(d, ent);
+      if (!pair) continue;
+      const a = P[pair[0]], b = P[pair[1]];
+      if (!a || !b || a === b) continue;
+      const target = mm(Math.abs(d.value), d.unit);
+      if (d.axis === 'x' || d.axis === 'y') {
+        const k = d.axis;
+        const cur = b[k] - a[k];
+        const want = target * (cur < 0 ? -1 : 1);
+        const err = (want - cur) * SKI_RELAX / 2;
+        a[k] -= err; b[k] += err;
+      } else {
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-9) { dx = 1; dy = 0; }
+        const ux = (len < 1e-9 ? 1 : dx / len), uy = (len < 1e-9 ? 0 : dy / len);
+        const err = (target - len) * SKI_RELAX / 2;
+        a.x -= ux * err; a.y -= uy * err;
+        b.x += ux * err; b.y += uy * err;
+      }
+    }
+  }
+
+  // 5 ── residuals: what the solve actually achieved per dimension
+  const report = [];
+  for (const d of plan.dimensions) {
+    const target = mm(Math.abs(d.value), d.unit);
+    let got = null;
+    if (d.type === 'angular') {
+      got = skiMeasureAngle(d, ent, P);
+    } else if (d.type === 'diameter' || d.type === 'radius') {
+      const r = radius[d.of[0]];
+      got = (r == null) ? null : (d.type === 'diameter' ? r * 2 : r);
+    } else {
+      const pair = skiDimPoints(d, ent);
+      const a = pair && P[pair[0]], b = pair && P[pair[1]];
+      if (a && b) got = d.axis === 'x' ? Math.abs(b.x - a.x)
+                      : d.axis === 'y' ? Math.abs(b.y - a.y)
+                      : Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    report.push({
+      id: d.id, on: d.on !== false,
+      target: d.type === 'angular' ? Math.abs(d.value) : target,
+      got: got,
+      delta: (got == null || d.on === false) ? null
+           : (d.type === 'angular' ? got - Math.abs(d.value) : got - target),
+    });
+  }
+
+  // 6 ── geometry out, in aiApply's object shape. Normalise so the drawing
+  // sits in the positive quadrant near origin rather than wherever the
+  // photo's pixel origin happened to land.
+  let minX = Infinity, minY = Infinity;
+  for (const id in P) { minX = Math.min(minX, P[id].x); minY = Math.min(minY, P[id].y); }
+  if (!isFinite(minX)) { minX = 0; minY = 0; }
+  const off = { x: -minX, y: -minY };
+  const at = id => P[id] ? { x: P[id].x + off.x, y: P[id].y + off.y } : null;
+
+  const objects = [];
+  for (const e of plan.entities) {
+    if (e.skip) continue;
+    if (e.type === 'line') {
+      const a = at(e.p1), b = at(e.p2);
+      if (a && b && Math.hypot(b.x - a.x, b.y - a.y) > 1e-6)
+        objects.push({ _e: e.id, type: 'LINE', x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+    } else if (e.type === 'circle') {
+      const c = at(e.c);
+      const r = radius[e.id] != null ? radius[e.id] : Number(e.r_px) * S;
+      if (c && r > 1e-6) objects.push({ _e: e.id, type: 'CIRCLE', cx: c.x, cy: c.y, r: r });
+    } else if (e.type === 'arc') {
+      const c = at(e.c), a = at(e.p1), b = at(e.p2);
+      if (!c || !a || !b) continue;
+      const r = radius[e.id] != null ? radius[e.id]
+              : (Math.hypot(a.x - c.x, a.y - c.y) + Math.hypot(b.x - c.x, b.y - c.y)) / 2;
+      if (!(r > 1e-6)) continue;
+      let s0 = Math.atan2(a.y - c.y, a.x - c.x);
+      let s1 = Math.atan2(b.y - c.y, b.x - c.x);
+      // No sweep direction in the schema, so take the minor arc — the common
+      // case for fillets and rounded ends. Flip in review if it guessed wrong.
+      let sweep = s1 - s0;
+      while (sweep <= -Math.PI) sweep += 2 * Math.PI;
+      while (sweep > Math.PI) sweep -= 2 * Math.PI;
+      const ccw = sweep >= 0;
+      objects.push({ _e: e.id, type: 'ARC', cx: c.x, cy: c.y, r: r,
+                     startA: ccw ? s0 : s1, endA: ccw ? s1 : s0, ccw: true });
+    }
+  }
+
+  return { pts: P, off: off, rough: rough, scale: S, scaled: scaled,
+           objects: objects, report: report, radius: radius };
+}
+
+// Resolve a linear dimension to the two points it actually constrains.
+function skiDimPoints(d, ent) {
+  if (d.of && d.of.length) {
+    const e = ent[d.of[0]];
+    if (e && e.type === 'line') return [e.p1, e.p2];
+    if (e && e.type === 'arc')  return [e.p1, e.p2];
+    return null;
+  }
+  if (d.from && d.to) return [d.from, d.to];
+  return null;
+}
+
+function skiAngleParts(d, ent, P) {
+  const e1 = ent[d.of[0]], e2 = ent[d.of[1]];
+  if (!e1 || !e2 || e1.type !== 'line' || e2.type !== 'line') return null;
+  const shared = [e1.p1, e1.p2].find(p => p === e2.p1 || p === e2.p2);
+  if (!shared) return null;
+  const a = (e1.p1 === shared) ? e1.p2 : e1.p1;
+  const b = (e2.p1 === shared) ? e2.p2 : e2.p1;
+  if (!P[shared] || !P[a] || !P[b]) return null;
+  return { v: P[shared], a: P[a], b: P[b] };
+}
+function skiMeasureAngle(d, ent, P) {
+  const g = skiAngleParts(d, ent, P);
+  if (!g) return null;
+  const a1 = Math.atan2(g.a.y - g.v.y, g.a.x - g.v.x);
+  const a2 = Math.atan2(g.b.y - g.v.y, g.b.x - g.v.x);
+  let diff = Math.abs(a2 - a1);
+  if (diff > Math.PI) diff = 2 * Math.PI - diff;
+  return diff * 180 / Math.PI;
+}
+function skiRelaxAngle(d, ent, P) {
+  const g = skiAngleParts(d, ent, P);
+  if (!g) return;
+  const cur = skiMeasureAngle(d, ent, P);
+  if (cur == null) return;
+  const err = (Math.abs(d.value) - cur) * Math.PI / 180 * SKI_RELAX / 2;
+  skiRotAbout(g.a, g.v, +err);
+  skiRotAbout(g.b, g.v, -err);
+}
+function skiRotAbout(p, o, t) {
+  const c = Math.cos(t), s = Math.sin(t);
+  const dx = p.x - o.x, dy = p.y - o.y;
+  p.x = o.x + dx * c - dy * s;
+  p.y = o.y + dx * s + dy * c;
+}
+
+// ── run: ingest options -> vision -> solve -> review ────────────────────────
+
+async function skiRun() {
+  if (!SKI || SKI.busy) return;
+  if (!SKAD_AI || !SKAD_AI.key) {
+    skiStatus('No AI key set \u2014 open the AI dock settings first.', 'var(--red)');
+    aiOpenDock(); aiToggleSettings(true);
+    return;
+  }
+  SKI.busy = true;
+  const go = document.getElementById('ski-go');
+  if (go) go.disabled = true;
+  skiStatus('Reading the drawing\u2026 this takes a few seconds.', 'var(--accent)');
+
+  try {
+    const prep = skiPicked('prep', 'raw');
+    const cv = (prep === 'enhance') ? skiEnhance(SKI.raw.canvas) : SKI.raw.canvas;
+    SKI.view = cv;
+    const useJpeg = SKI.raw.photo && prep !== 'enhance';
+    SKI.media = useJpeg ? 'image/jpeg' : 'image/png';
+    SKI.dataUrl = useJpeg ? cv.toDataURL('image/jpeg', 0.92) : cv.toDataURL('image/png');
+
+    const plan = await skiVision(SKI.dataUrl, SKI.media);
+    plan._w = SKI.raw.w; plan._h = SKI.raw.h;
+    if (!plan.entities.length) throw new Error('no geometry was recognised in that image');
+    SKI.plan = plan;
+    SKI.solved = skiSolve(plan);
+    skiOpenReview();
+  } catch (err) {
+    skiStatus(String(err && err.message || err), 'var(--red)');
+  } finally {
+    SKI.busy = false;
+    if (go) go.disabled = false;
+  }
+}
+
+// ── review — mandatory, per spec ────────────────────────────────────────────
+
+function skiOpenReview() {
+  const dlg = document.getElementById('sketch-import-overlay');
+  if (dlg) dlg.classList.remove('open');
+  const ov = document.getElementById('sketch-review-overlay');
+  if (!ov) return;
+  ov.classList.add('open');
+  // The host has no width until the overlay has laid out, so size the
+  // canvas on the next frame rather than against a zero-width box.
+  requestAnimationFrame(skiRenderReview);
+}
+function closeSketchReview() {
+  const ov = document.getElementById('sketch-review-overlay');
+  if (ov) ov.classList.remove('open');
+  SKI = null;
+}
+
+function skiRenderReview() {
+  if (!SKI || !SKI.solved) return;
+  skiDrawOverlay();
+  skiRenderDimList();
+  skiRenderEntityList();
+  const p = SKI.plan;
+  const meta = document.getElementById('skr-meta');
+  if (meta) {
+    const bad = SKI.solved.report.filter(r => r.on && r.delta != null && Math.abs(r.delta) > 0.5).length;
+    meta.innerHTML = '';
+    const add = (label, value, color) => {
+      const row = document.createElement('div');
+      row.className = 'fi-row';
+      row.textContent = label;
+      const s = document.createElement('span');
+      s.textContent = value;
+      if (color) s.style.color = color;
+      row.appendChild(s);
+      meta.appendChild(row);
+    };
+    add('Model confidence', p.confidence || 'unstated',
+        p.confidence === 'low' ? 'var(--red)' : p.confidence === 'medium' ? 'var(--amber,#e6a23c)' : null);
+    add('Scale reference', SKI.solved.scaled ? 'from dimensions' : 'NONE \u2014 sizes are guesses',
+        SKI.solved.scaled ? null : 'var(--red)');
+    add('Entities', String(p.entities.length));
+    add('Dimensions', String(p.dimensions.length));
+    add('Unsatisfied (>0.5mm)', String(bad), bad ? 'var(--red)' : null);
+  }
+  const notes = document.getElementById('skr-notes');
+  if (notes) {
+    notes.innerHTML = '';
+    for (const n of (SKI.plan.notes || [])) {
+      const d = document.createElement('div');
+      d.className = 'skr-note';
+      d.textContent = n;
+      notes.appendChild(d);
+    }
+    notes.style.display = (SKI.plan.notes || []).length ? '' : 'none';
+  }
+}
+
+// Maps solved mm geometry back onto the original pixels so misbindings are
+// visible against what was actually drawn. Similarity fit only (uniform scale,
+// no rotation) — after the scale seed the solve moves things by small amounts,
+// so this lands close enough to read.
+function skiFitToImage() {
+  const s = SKI.solved;
+  const ids = Object.keys(s.pts).filter(id => s.rough[id]);
+  if (!ids.length) return { k: 1, cx: 0, cy: 0, rx: 0, ry: 0 };
+  let cx = 0, cy = 0, rx = 0, ry = 0;
+  for (const id of ids) {
+    cx += s.pts[id].x + s.off.x; cy += s.pts[id].y + s.off.y;
+    rx += s.rough[id].x; ry += s.rough[id].y;
+  }
+  cx /= ids.length; cy /= ids.length; rx /= ids.length; ry /= ids.length;
+  let ns = 0, nr = 0;
+  for (const id of ids) {
+    ns += Math.hypot(s.pts[id].x + s.off.x - cx, s.pts[id].y + s.off.y - cy);
+    nr += Math.hypot(s.rough[id].x - rx, s.rough[id].y - ry);
+  }
+  const k = (ns > 1e-9) ? nr / ns : 1;
+  return { k: k, cx: cx, cy: cy, rx: rx, ry: ry };
+}
+
+function skiDrawOverlay() {
+  const host = document.getElementById('skr-canvas-host');
+  if (!host) return;
+  const src = SKI.view || SKI.raw.canvas;
+  const maxW = Math.max(240, host.clientWidth || 480);
+  const k = Math.min(1, maxW / src.width);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(src.width * k);
+  cv.height = Math.round(src.height * k);
+  cv.style.width = '100%'; cv.style.height = 'auto'; cv.style.display = 'block';
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(src, 0, 0, cv.width, cv.height);
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#04060a';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.globalAlpha = 1;
+
+  const f = skiFitToImage();
+  // solved (mm, y-up, offset) -> image px -> displayed px
+  const T = (x, y) => ({
+    x: (f.rx + (x - f.cx) * f.k) * k,
+    y: (f.ry - (y - f.cy) * f.k) * k,
+  });
+
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = '#00d4ff';
+  ctx.shadowColor = 'rgba(0,212,255,0.6)';
+  ctx.shadowBlur = 4;
+  for (const o of SKI.solved.objects) {
+    const ent = SKI.plan.entities.find(e => e.id === o._e);
+    if (ent && ent.skip) continue;
+    ctx.beginPath();
+    if (o.type === 'LINE') {
+      const a = T(o.x1, o.y1), b = T(o.x2, o.y2);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    } else if (o.type === 'CIRCLE') {
+      const c = T(o.cx, o.cy);
+      ctx.arc(c.x, c.y, Math.max(0.5, o.r * f.k * k), 0, Math.PI * 2);
+    } else if (o.type === 'ARC') {
+      const c = T(o.cx, o.cy);
+      // canvas y is down, solved y is up, so the sweep mirrors
+      ctx.arc(c.x, c.y, Math.max(0.5, o.r * f.k * k), -o.startA, -o.endA, true);
+    }
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  host.innerHTML = '';
+  host.appendChild(cv);
+}
+
+function skiRenderDimList() {
+  const list = document.getElementById('skr-dims');
+  if (!list) return;
+  list.innerHTML = '';
+  const rep = Object.create(null);
+  for (const r of SKI.solved.report) rep[r.id] = r;
+
+  SKI.plan.dimensions.forEach((d, i) => {
+    const r = rep[d.id] || {};
+    const row = document.createElement('div');
+    row.className = 'skr-dim' + (d.on === false ? ' off' : '');
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = d.on !== false;
+    cb.title = 'Use this dimension in the solve';
+    cb.onchange = () => { d.on = cb.checked; skiResolve(); };
+    row.appendChild(cb);
+
+    const badge = document.createElement('span');
+    badge.className = 'skr-badge skr-' + d.type;
+    badge.textContent = d.type === 'diameter' ? '\u2300'
+                      : d.type === 'radius' ? 'R'
+                      : d.type === 'angular' ? '\u2220'
+                      : (d.axis ? d.axis.toUpperCase() : 'L');
+    row.appendChild(badge);
+
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.step = 'any'; inp.className = 'skr-val';
+    inp.value = String(d.value);
+    inp.onchange = () => {
+      const v = parseFloat(inp.value);
+      if (isFinite(v)) { d.value = v; d.corrected = true; skiResolve(); }
+    };
+    row.appendChild(inp);
+
+    const unit = document.createElement('span');
+    unit.className = 'skr-unit';
+    unit.textContent = d.unit;
+    row.appendChild(unit);
+
+    const bind = document.createElement('span');
+    bind.className = 'skr-bind';
+    bind.textContent = skiBindLabel(d);
+    bind.title = 'What this dimension is attached to';
+    row.appendChild(bind);
+
+    const res = document.createElement('span');
+    res.className = 'skr-res';
+    if (d.on === false || r.delta == null) { res.textContent = '\u2014'; }
+    else {
+      const ad = Math.abs(r.delta);
+      res.textContent = (ad < 0.005 ? 'exact' : '\u0394 ' + r.delta.toFixed(2));
+      res.style.color = ad < 0.05 ? 'var(--green,#39ff14)' : ad < 0.5 ? '#e6a23c' : 'var(--red)';
+    }
+    row.appendChild(res);
+
+    if (d.confidence === 'low' || d.corrected) {
+      const flag = document.createElement('span');
+      flag.className = 'skr-flag';
+      flag.textContent = d.corrected ? 'edited' : 'low conf';
+      flag.title = d.corrected ? 'You changed this value'
+                 : 'The model was unsure of this reading' +
+                   (d.text_as_read ? ' \u2014 it read: ' + d.text_as_read : '');
+      row.appendChild(flag);
+    }
+    list.appendChild(row);
+  });
+
+  if (!SKI.plan.dimensions.length) {
+    const d = document.createElement('div');
+    d.className = 'skr-empty';
+    d.textContent = 'No dimensions were read. Nothing is to scale \u2014 cancel and try a clearer image.';
+    list.appendChild(d);
+  }
+}
+
+function skiBindLabel(d) {
+  if (d.type === 'angular') return 'between ' + (d.of || []).join(' + ');
+  if (d.type === 'diameter' || d.type === 'radius') return 'on ' + (d.of[0] || '?');
+  if (d.of && d.of.length) return 'edge ' + d.of[0];
+  if (d.from && d.to) return d.from + ' \u2192 ' + d.to;
+  return 'unbound';
+}
+
+function skiRenderEntityList() {
+  const list = document.getElementById('skr-ents');
+  if (!list) return;
+  list.innerHTML = '';
+  SKI.plan.entities.forEach(e => {
+    const row = document.createElement('div');
+    row.className = 'skr-ent' + (e.skip ? ' off' : '');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !e.skip;
+    cb.onchange = () => { e.skip = !cb.checked; skiResolve(); };
+    row.appendChild(cb);
+    const t = document.createElement('span');
+    t.className = 'skr-etype';
+    t.textContent = e.type;
+    row.appendChild(t);
+    const id = document.createElement('span');
+    id.className = 'skr-eid';
+    id.textContent = e.id;
+    row.appendChild(id);
+    list.appendChild(row);
+  });
+}
+
+function skiResolve() {
+  if (!SKI || !SKI.plan) return;
+  SKI.solved = skiSolve(SKI.plan);
+  skiRenderReview();
+}
+
+// ── commit ──────────────────────────────────────────────────────────────────
+
+function skiCommit() {
+  if (!SKI || !SKI.solved) return;
+  const objs = SKI.solved.objects.filter(o => {
+    const e = SKI.plan.entities.find(x => x.id === o._e);
+    return !(e && e.skip);
+  });
+  if (!objs.length) { showToast('Nothing selected to place'); return; }
+
+  if (!LAYERS[SKI_LAYER]) {
+    LAYERS[SKI_LAYER] = { name: SKI_LAYER, color: '#e8a33d', ltype: 'continuous',
+                          weight: 1.3, visible: true, locked: false };
+  }
+  if (skiPicked('place', 'merge') === 'replace') GeoMemory.clear();
+
+  const before = GeoMemory.objects.slice();
+  const beforeId = GeoMemory.nextId;
+  const made = [];
+  try {
+    for (const o of objs) {
+      const c = Object.assign({}, o, { layer: SKI_LAYER });
+      delete c._e;
+      aiValidate(c, made.length);
+      const m = aiApply(c);
+      if (m) { m.src = 'sketch-ai'; made.push(m.id); }
+    }
+    if (document.getElementById('skr-place-dims') &&
+        document.getElementById('skr-place-dims').checked) {
+      skiPlaceDims(made);
+    }
+  } catch (err) {
+    GeoMemory.objects = before;
+    GeoMemory.nextId = beforeId;
+    render();
+    showToast('Could not place geometry: ' + err.message);
+    return;
+  }
+
+  markModelDirty();
+  captureHistory('model');
+  buildLayerPanel();
+  updateProps();
+  render();
+  try { zoomExtents(); } catch (e) {}
+  const low = SKI.plan.dimensions.filter(d => d.confidence === 'low' && !d.corrected).length;
+  showToast('Placed ' + made.length + ' object' + (made.length === 1 ? '' : 's') +
+            ' on ' + SKI_LAYER + (low ? ' \u00b7 ' + low + ' low-confidence value' + (low === 1 ? '' : 's') + ' unchecked' : ''));
+  closeSketchReview();
+}
+
+// Optional: drop the callouts in as DIM objects so the placed geometry carries
+// the numbers it was built from. Aligned dims only — KAD's DIM is a two-point
+// object, so diameter/radius/angular callouts are left out rather than faked.
+function skiPlaceDims() {
+  if (!LAYERS[SKI_LAYER_DIM]) {
+    LAYERS[SKI_LAYER_DIM] = { name: SKI_LAYER_DIM, color: '#39ff14', ltype: 'continuous',
+                              weight: 0.5, visible: true, locked: false };
+  }
+  const s = SKI.solved, ent = Object.create(null);
+  for (const e of SKI.plan.entities) ent[e.id] = e;
+  for (const d of SKI.plan.dimensions) {
+    if (d.on === false || d.type !== 'linear') continue;
+    const pair = skiDimPoints(d, ent);
+    if (!pair) continue;
+    const a = s.pts[pair[0]], b = s.pts[pair[1]];
+    if (!a || !b) continue;
+    GeoMemory.addDim(a.x + s.off.x, a.y + s.off.y, b.x + s.off.x, b.y + s.off.y,
+                     SKI_LAYER_DIM, null);
+  }
+}
+
 </script>
 
 <!-- ── ACCESS GATE — cosmetic only, NOT real security ──────────────────────
